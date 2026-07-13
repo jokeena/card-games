@@ -2,17 +2,28 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { GameAction, GameState } from '../engine/game';
 import { partnerOf } from '../engine/modes';
 import { legalPlays } from '../engine/tricks';
-import { Card, RANK_POWER, Suit, SUITS, SUIT_SYMBOL, isRed } from '../engine/types';
+import { Card, RANK_POWER, Suit, SUITS, SUIT_NAME, SUIT_SYMBOL, isRed } from '../engine/types';
 import { CardView } from './CardView';
 
 const SEAT_POS: Record<number, [number, number][]> = {
-  3: [[50, 100], [12, 26], [88, 26]],
-  4: [[50, 100], [8, 50], [50, 12], [92, 50]],
+  3: [[50, 100], [10, 45], [90, 45]],
+  4: [[50, 100], [8, 50], [50, 16], [92, 50]],
   5: [[50, 100], [7, 58], [22, 15], [78, 15], [93, 58]],
-  6: [[50, 100], [7, 62], [16, 16], [50, 10], [84, 16], [93, 62]],
+  6: [[50, 100], [7, 62], [26, 14], [50, 14], [74, 14], [93, 62]],
 };
 
 export const TEAM_COLORS = ['#53b4e8', '#f0a53c', '#b26fd1', '#6dbf73', '#e06868'];
+
+/**
+ * Where each seat's played card rests, in px from the table center.
+ * Tight cluster, but spaced so full-size cards (76x108) never overlap.
+ */
+const TRICK_OFFSET: Record<number, [number, number][]> = {
+  3: [[0, 64], [-92, -32], [92, -32]],
+  4: [[0, 76], [-94, 0], [0, -76], [94, 0]],
+  5: [[0, 86], [-132, 12], [-44, -74], [44, -74], [132, 12]],
+  6: [[0, 58], [-90, 58], [-90, -58], [0, -58], [90, -58], [90, 58]],
+};
 
 interface Props {
   state: GameState;
@@ -271,7 +282,7 @@ export function GameTable({ state, names, dispatch }: Props) {
             {state.phase === 'bidding' && (
               state.passed[seat]
                 ? <div className="seat-bubble bubble-pass">Passed</div>
-                : <div className="seat-bubble">{state.highSeat === seat ? `Bid ${state.highBid}` : ''}</div>
+                : <div className="seat-bubble">{state.bids[seat] !== null ? `Bid ${state.bids[seat]}` : ''}</div>
             )}
             {trickCount(mode.teams[seat]) > 0 && (
               <div className="seat-strewn"><Strewn count={trickCount(mode.teams[seat])} /></div>
@@ -297,10 +308,9 @@ export function GameTable({ state, names, dispatch }: Props) {
         <div className="trick-area">
           {state.trick.map((p, i) => {
             const [sx, sy] = positions[p.seat];
+            const [ox, oy] = TRICK_OFFSET[mode.players][p.seat];
             const doCollect = isTrickEnd && collect;
             const [wx, wy] = doCollect ? positions[state.trickWinner] : [0, 0];
-            const tx = doCollect ? wx : 50 + (sx - 50) * 0.15;
-            const ty = doCollect ? Math.min(wy, 88) : 45 + (sy - 45) * 0.17;
             return (
               <div
                 key={p.card.id}
@@ -310,11 +320,11 @@ export function GameTable({ state, names, dispatch }: Props) {
                   isTrickEnd && p.seat === state.trickWinner ? 'trick-winner' : '',
                 ].filter(Boolean).join(' ')}
                 style={{
-                  left: `${tx}%`,
-                  top: `${ty}%`,
-                  ['--sx' as string]: `${(sx - 50) * 3.2}px`,
-                  ['--sy' as string]: `${(sy - 46) * 3.2}px`,
-                  ['--rot' as string]: `${((p.seat * 47 + i * 13) % 15) - 7}deg`,
+                  left: doCollect ? `${wx}%` : `calc(50% + ${ox}px)`,
+                  top: doCollect ? `${Math.min(wy, 88)}%` : `calc(45% + ${oy}px)`,
+                  ['--fx' as string]: `${sx}%`,
+                  ['--fy' as string]: `${Math.min(sy, 96)}%`,
+                  ['--rot' as string]: `${((p.seat * 47 + i * 13) % 9) - 4}deg`,
                 }}
               >
                 <CardView card={p.card} />
@@ -336,13 +346,40 @@ export function GameTable({ state, names, dispatch }: Props) {
 
           {state.phase === 'bidding' && mode.kittySize > 0 && (
             <div className="kitty-display">
-              {Array.from({ length: mode.kittySize }).map((_, i) => (
-                <div key={i} className="fan-back" style={{ transform: `rotate(${(i - 1) * 8}deg)` }} />
-              ))}
+              <div className="kitty-cards">
+                {Array.from({ length: mode.kittySize }).map((_, i) => (
+                  <div key={i} className="fan-back" />
+                ))}
+              </div>
               <span>kitty</span>
             </div>
           )}
         </div>
+
+        {/* Cards the human just received from a pass */}
+        {state.passBuffer.length > 0 &&
+          ((state.phase === 'pass2' && state.bidWinner === 0) ||
+            (state.phase === 'meld' && partner === 0)) && (
+          <div className="received-row">
+            <div className="received-label">
+              {state.phase === 'pass2'
+                ? `${names[partner!]} passed you`
+                : `${names[state.bidWinner]} returned to you`}
+            </div>
+            <div className="received-cards">
+              {state.passBuffer.map((c) => <CardView key={c.id} card={c} size="mid" />)}
+            </div>
+          </div>
+        )}
+
+        {state.trump && state.phase !== 'gameOver' && (
+          <div className="trump-pill">
+            <span className={`trump-sym ${isRed(state.trump) ? 'suit-red' : ''}`}>
+              {SUIT_SYMBOL[state.trump]}
+            </span>
+            <span className="trump-label">{SUIT_NAME[state.trump]}<em>trump</em></span>
+          </div>
+        )}
 
         {statusText && <div className="status-bar">{statusText}</div>}
 
@@ -416,6 +453,11 @@ export function GameTable({ state, names, dispatch }: Props) {
               <span className="chip chip-bid">{state.highBid}</span>
             )}
           </div>
+          {state.phase === 'bidding' && (
+            state.passed[0]
+              ? <div className="seat-bubble bubble-pass">Passed</div>
+              : state.bids[0] !== null && <div className="seat-bubble">Bid {state.bids[0]}</div>
+          )}
         </div>
         <div className="hand-cards">
           {(humanNeedsPick ? hand.filter((c) => !selection.includes(c.id)) : hand).map((c, i) => (

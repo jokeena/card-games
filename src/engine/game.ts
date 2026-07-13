@@ -45,6 +45,8 @@ export interface GameState {
 
   turn: number;
   passed: boolean[];
+  /** Last amount each seat bid this auction; null = hasn't bid yet. */
+  bids: (number | null)[];
   highBid: number;
   highSeat: number;
   wasStuck: boolean;
@@ -95,6 +97,7 @@ function freshHand(state: GameState, dealer: number): GameState {
     discard: [],
     turn: (dealer + 1) % mode.players,
     passed: Array(mode.players).fill(false),
+    bids: Array(mode.players).fill(null),
     highBid: 0,
     highSeat: -1,
     wasStuck: false,
@@ -125,6 +128,7 @@ export function newGame(mode: ModeConfig): GameState {
     discard: [],
     turn: 0,
     passed: [],
+    bids: [],
     highBid: 0,
     highSeat: -1,
     wasStuck: false,
@@ -256,7 +260,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (state.phase !== 'bidding' || action.seat !== state.turn) return state;
       const min = state.highSeat === -1 ? mode.bidStart : state.highBid + 1;
       if (action.amount < min) return state;
-      const next = { ...state, highBid: action.amount, highSeat: action.seat };
+      const bids = [...state.bids];
+      bids[action.seat] = action.amount;
+      const next = { ...state, bids, highBid: action.amount, highSeat: action.seat };
       next.log = log(state, `Seat ${action.seat} bids ${action.amount}.`);
       if (activeBidders(next) === 1 && !next.passed[action.seat]) {
         // Everyone else already passed; this bid ends it.
@@ -324,6 +330,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         return {
           ...state,
           hands,
+          passBuffer: taken,
           phase: 'pass2',
           turn: state.bidWinner,
           log: log(state, `Partner passes ${mode.passCount} cards to the bid winner.`),
@@ -339,6 +346,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         return enterMeld({
           ...state,
           hands,
+          passBuffer: taken,
           log: log(state, `Bid winner returns ${mode.passCount} cards.`),
         });
       }
