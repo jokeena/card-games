@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computeMeld } from './meld';
-import { legalPlays, winningIndex } from './tricks';
+import { legalPlays, winningIndex, winsRemainingTricks } from './tricks';
 import { Card, Rank, Suit } from './types';
 
 let uid = 0;
@@ -123,5 +123,73 @@ describe('trick legality — strict follow/beat/trump rules', () => {
     expect(winningIndex(trick, trump)).toBe(0);
     const trumped = [...trick, { seat: 2, card: c('H', '9') }];
     expect(winningIndex(trumped, trump)).toBe(2);
+  });
+});
+
+describe('winsRemainingTricks — claim guarantee', () => {
+  const trump: Suit = 'H';
+
+  it('all boss trumps: guaranteed', () => {
+    const hands = [
+      [c('H', 'A'), c('H', 'A')],
+      [c('H', '10'), c('S', 'K')],
+      [c('D', 'A'), c('C', 'A')],
+    ];
+    expect(winsRemainingTricks(hands, 0, trump)).toBe(true);
+  });
+
+  it('an opponent holding a higher trump than my lowest breaks the claim', () => {
+    const hands = [
+      [c('H', 'A'), c('H', 'K')],
+      [c('H', '10'), c('S', '9')],
+      [c('D', '9'), c('C', '9')],
+    ];
+    expect(winsRemainingTricks(hands, 0, trump)).toBe(false);
+  });
+
+  it('equal-rank trump cannot beat the leader (ties lose)', () => {
+    const hands = [
+      [c('H', 'A'), c('H', 'A')],
+      [c('H', 'A'), c('S', '9')],
+      [c('D', '9'), c('C', '9')],
+    ];
+    expect(winsRemainingTricks(hands, 0, trump)).toBe(true);
+  });
+
+  it('boss side suit is safe only while no one can ruff it', () => {
+    // Seat 1 has one spade fewer than the leader and still holds a trump:
+    // on the second spade lead they would be void and forced to ruff.
+    const hands = [
+      [c('S', 'A'), c('S', 'A')],
+      [c('S', 'K'), c('H', '9')],
+      [c('D', '9'), c('C', '9')],
+    ];
+    expect(winsRemainingTricks(hands, 0, trump)).toBe(false);
+    // Same shape but seat 1 has no trump: their void is harmless.
+    const noTrump = [
+      [c('S', 'A'), c('S', 'A')],
+      [c('S', 'K'), c('D', '9')],
+      [c('D', '9'), c('C', '9')],
+    ];
+    expect(winsRemainingTricks(noTrump, 0, trump)).toBe(true);
+  });
+
+  it('a higher card in a led side suit breaks the claim', () => {
+    const hands = [
+      [c('S', '10'), c('S', '10')],
+      [c('S', 'A'), c('S', '9')],
+      [c('D', '9'), c('C', '9')],
+    ];
+    expect(winsRemainingTricks(hands, 0, trump)).toBe(false);
+  });
+
+  it('claim must also hold against the partner (must-beat applies to them too)', () => {
+    const hands = [
+      [c('H', 'K'), c('H', 'K')],
+      [c('S', '9'), c('C', '9')],
+      [c('H', 'A'), c('D', '9')], // partner seat in 4-handed would be seat 2
+      [c('D', '9'), c('D', '9')],
+    ];
+    expect(winsRemainingTricks(hands, 0, trump)).toBe(false);
   });
 });

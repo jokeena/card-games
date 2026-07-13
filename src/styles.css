@@ -101,6 +101,7 @@ body {
 
 /* ================= Top bar ================= */
 .top-bar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -109,6 +110,24 @@ body {
   border-bottom: 1px solid #ddd7c2;
   z-index: 25;
 }
+.bar-trump {
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: #fdfcf7;
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px;
+  padding: 3px 13px 3px 10px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #1c1c1c;
+  white-space: nowrap;
+  animation: bubbleIn 0.3s ease-out;
+}
+.bar-trump-sym { font-size: 1.3rem; line-height: 1; }
 .bar-spacer { flex: 1; }
 .bar-btn {
   background: #fff;
@@ -482,40 +501,6 @@ body {
 }
 .received-cards { display: flex; gap: 8px; }
 
-/* ================= Trump pill ================= */
-.trump-pill {
-  position: absolute;
-  left: 20px; bottom: 16px;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  background: #fdfcf7;
-  border: 1px solid var(--panel-edge);
-  border-radius: 12px;
-  padding: 6px 14px 6px 11px;
-  box-shadow: 0 6px 18px rgba(0, 30, 10, 0.3);
-  animation: bubbleIn 0.3s ease-out;
-}
-.trump-sym { font-size: 1.7rem; line-height: 1; color: #1c1c1c; }
-.trump-sym.suit-red { color: var(--red); }
-.trump-label {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.15;
-  color: #1c1c1c;
-  font-weight: 700;
-  font-size: 0.85rem;
-}
-.trump-label em {
-  font-style: normal;
-  font-size: 0.6rem;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  color: #8a8574;
-  font-weight: 600;
-}
-
 /* ================= Status & action panels ================= */
 .status-bar {
   position: absolute;
@@ -545,6 +530,8 @@ body {
   animation: panelIn 0.3s ease-out;
   box-shadow: 0 12px 36px rgba(50, 60, 40, 0.3);
 }
+/* Play hand / go set: sits low so it never covers the human's meld row */
+.meld-panel { bottom: 6px; }
 @keyframes panelIn {
   from { transform: translate(-50%, 12px); opacity: 0; }
   to { transform: translate(-50%, 0); opacity: 1; }
@@ -828,7 +815,7 @@ body {
 .bid-pass:hover { border-color: #a8a28c; color: #3d3d33; }
 .bid-step {
   background: #fff;
-  color: #2e7d3a;
+  color: var(--navy);
   border: 1px solid #cfc9b4;
   border-radius: 9px;
   width: 42px;
@@ -838,10 +825,10 @@ body {
   cursor: pointer;
   transition: all 0.13s;
 }
-.bid-step:hover:not(:disabled) { background: #eef5ee; border-color: #2e7d3a; }
+.bid-step:hover:not(:disabled) { background: #eef2fa; border-color: var(--navy); }
 .bid-step:disabled { opacity: 0.35; cursor: default; }
 .bid-main {
-  background: #2e7d3a;
+  background: linear-gradient(170deg, #3a6fc4, #2b57a5);
   color: #fff;
   border: none;
   border-radius: 9px;
@@ -849,11 +836,11 @@ body {
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 3px 10px rgba(46, 125, 58, 0.35);
+  box-shadow: 0 3px 10px rgba(47, 98, 180, 0.35);
   transition: all 0.13s;
   font-variant-numeric: tabular-nums;
 }
-.bid-main:hover { background: #389546; transform: translateY(-1px); }
+.bid-main:hover { box-shadow: 0 5px 16px rgba(47, 98, 180, 0.5); transform: translateY(-1px); }
 
 /* ================= Modals ================= */
 .modal-backdrop {

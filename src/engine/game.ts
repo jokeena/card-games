@@ -1,7 +1,7 @@
 import { dealHands } from './deck';
 import { computeMeld, MeldResult } from './meld';
 import { ModeConfig, partnerOf } from './modes';
-import { legalPlays, winningIndex } from './tricks';
+import { legalPlays, winningIndex, winsRemainingTricks } from './tricks';
 import { Card, isCounter, Played, Suit, SUIT_NAME } from './types';
 
 export type Phase =
@@ -75,6 +75,7 @@ export type GameAction =
   | { type: 'DISCARD'; seat: number; cardIds: string[] }
   | { type: 'PASS_CARDS'; seat: number; cardIds: string[] }
   | { type: 'PLAY'; seat: number; cardId: string }
+  | { type: 'CLAIM_REST'; seat: number }
   | { type: 'THROW_IN'; seat: number }
   | { type: 'CONTINUE' };
 
@@ -388,6 +389,28 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         tricksPlayed: state.tricksPlayed + 1,
         lastTrickTeam: winnerTeam,
       };
+    }
+
+    case 'CLAIM_REST': {
+      // On lead and guaranteed every remaining trick regardless of order:
+      // sweep all remaining cards to the claimant's team and score the hand.
+      if (state.phase !== 'play' || action.seat !== state.turn || state.trick.length > 0) return state;
+      if (!winsRemainingTricks(state.hands, action.seat, state.trump!)) return state;
+      const team = mode.teams[action.seat];
+      const remaining = state.hands.flat();
+      const captured = state.captured.map((pile, t) =>
+        t === team ? [...pile, ...remaining] : pile);
+      const teamTookTrick = [...state.teamTookTrick];
+      teamTookTrick[team] = true;
+      return scoreHand({
+        ...state,
+        hands: state.hands.map(() => []),
+        captured,
+        teamTookTrick,
+        tricksPlayed: mode.handSize,
+        lastTrickTeam: team,
+        log: log(state, `Seat ${action.seat} wins the rest of the tricks.`),
+      });
     }
 
     case 'THROW_IN': {

@@ -2,6 +2,8 @@ import { useEffect, useReducer, useState } from 'react';
 import { botAction, Difficulty } from './bots/bot';
 import { gameReducer, GameState, newGame } from './engine/game';
 import { MODES, ModeConfig, partnerOf } from './engine/modes';
+import { winsRemainingTricks } from './engine/tricks';
+import { SUIT_NAME, SUIT_SYMBOL, isCounter, isRed } from './engine/types';
 import { GameTable } from './ui/GameTable';
 import { Modals, RulesModal } from './ui/Modals';
 
@@ -50,18 +52,38 @@ function Game({ mode, difficulty, onExit }: { mode: ModeConfig; difficulty: Diff
       return () => clearTimeout(t);
     }
 
-    // A bot bid winner may look at the table meld and concede a hopeless bid.
-    if (state.phase === 'meld' && state.bidWinner !== 0) {
+    if (state.phase === 'meld') {
       const bidTeam = mode.teams[state.bidWinner];
       const teamMeld = state.melds.reduce(
         (sum, m, seat) => (mode.teams[seat] === bidTeam ? sum + (m?.total ?? 0) : sum), 0);
       const tricksNeeded = state.highBid - teamMeld;
+
+      if (state.bidWinner === 0) {
+        // Even taking every trick can't cover the bid: go set automatically.
+        const maxTrickPoints =
+          state.hands.flat().filter(isCounter).length + state.discard.filter(isCounter).length + 1;
+        if (tricksNeeded > maxTrickPoints) {
+          const t = setTimeout(() => dispatch({ type: 'THROW_IN', seat: 0 }), 1200);
+          return () => clearTimeout(t);
+        }
+        return; // human clicks "Play hand"
+      }
+
+      // A bot bid winner may look at the table meld and concede a hopeless bid.
       const limit = difficulty === 'hard' ? 21 : difficulty === 'medium' ? 24 : 26;
       if (tricksNeeded > limit) {
         const t = setTimeout(() => dispatch({ type: 'THROW_IN', seat: state.bidWinner }), 900);
         return () => clearTimeout(t);
       }
       return; // human clicks "Play hand"
+    }
+
+    // Human on lead and guaranteed the rest no matter the order: claim them.
+    // With a single card left, just let it be played out normally.
+    if (state.phase === 'play' && state.turn === 0 && state.trick.length === 0 &&
+        state.hands[0].length > 1 && winsRemainingTricks(state.hands, 0, state.trump!)) {
+      const t = setTimeout(() => dispatch({ type: 'CLAIM_REST', seat: 0 }), 1600);
+      return () => clearTimeout(t);
     }
 
     const actor = actorFor(state);
@@ -80,6 +102,14 @@ function Game({ mode, difficulty, onExit }: { mode: ModeConfig; difficulty: Diff
         <button className="bar-btn" onClick={onExit}>← Menu</button>
         <span className="bar-title">{mode.label}</span>
         <span className="bar-spacer" />
+        {state.trump && state.phase !== 'gameOver' && (
+          <span className="bar-trump">
+            <span className={`bar-trump-sym ${isRed(state.trump) ? 'suit-red' : ''}`}>
+              {SUIT_SYMBOL[state.trump]}
+            </span>
+            {SUIT_NAME[state.trump]} trump
+          </span>
+        )}
         <button className="bar-btn bar-btn-round" title="Rules" onClick={() => setShowRules(true)}>i</button>
       </header>
       <GameTable state={state} names={names} dispatch={dispatch} />

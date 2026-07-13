@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GameAction, GameState } from '../engine/game';
 import { partnerOf } from '../engine/modes';
-import { legalPlays } from '../engine/tricks';
-import { Card, RANK_POWER, Suit, SUITS, SUIT_NAME, SUIT_SYMBOL, isRed } from '../engine/types';
+import { legalPlays, winsRemainingTricks } from '../engine/tricks';
+import { Card, RANK_POWER, Suit, SUITS, SUIT_SYMBOL, isRed } from '../engine/types';
 import { CardView } from './CardView';
 
 const SEAT_POS: Record<number, [number, number][]> = {
@@ -44,13 +44,16 @@ function permutations<T>(arr: T[]): T[][] {
     permutations([...arr.slice(0, i), ...arr.slice(i + 1)]).map((p) => [x, ...p]));
 }
 
-/** Trump first, then order suits so touching suits alternate color when possible. */
-function suitOrder(hand: Card[], trump: Suit | null): Suit[] {
-  const present = SUITS.filter((s) => hand.some((c) => c.suit === s));
-  let best = present;
+/**
+ * Trump first, then alternate suit colors. Depends only on trump — never on
+ * which suits happen to be in the hand — so the hand keeps a stable order
+ * all round instead of reshuffling as suits run out.
+ */
+function suitOrder(trump: Suit | null): Suit[] {
+  let best: Suit[] = [...SUITS];
   let bestScore = Infinity;
-  for (const perm of permutations(present)) {
-    if (trump && present.includes(trump) && perm[0] !== trump) continue;
+  for (const perm of permutations([...SUITS])) {
+    if (trump && perm[0] !== trump) continue;
     let sameColorTouches = 0;
     for (let i = 1; i < perm.length; i++) {
       if (isRed(perm[i]) === isRed(perm[i - 1])) sameColorTouches++;
@@ -64,7 +67,7 @@ function suitOrder(hand: Card[], trump: Suit | null): Suit[] {
 }
 
 function sortHand(hand: Card[], trump: Suit | null): Card[] {
-  const order = suitOrder(hand, trump);
+  const order = suitOrder(trump);
   return [...hand].sort((a, b) => {
     const sa = order.indexOf(a.suit);
     const sb = order.indexOf(b.suit);
@@ -167,6 +170,11 @@ export function GameTable({ state, names, dispatch }: Props) {
     () => (humanTurnToPlay ? legalPlays(state.hands[0], state.trick, state.trump!) : []),
     [state, humanTurnToPlay],
   );
+  const humanClaims = useMemo(
+    () => humanTurnToPlay && state.trick.length === 0 && state.hands[0].length > 1 &&
+      winsRemainingTricks(state.hands, 0, state.trump!),
+    [state, humanTurnToPlay],
+  );
   const legalIds = new Set(legal.map((c) => c.id));
 
   const hand = sortHand(state.hands[0] ?? [], state.trump);
@@ -208,8 +216,6 @@ export function GameTable({ state, names, dispatch }: Props) {
 
   const statusText = (() => {
     switch (state.phase) {
-      case 'bidding':
-        return state.turn === 0 ? 'Your bid.' : '';
       case 'trump':
         return state.bidWinner === 0 ? 'Name trump.' : `${names[state.bidWinner]} is naming trump…`;
       case 'discard':
@@ -218,9 +224,8 @@ export function GameTable({ state, names, dispatch }: Props) {
         return partner === 0 ? '' : `${names[partner!]} is passing cards…`;
       case 'pass2':
         return state.bidWinner === 0 ? '' : `${names[state.bidWinner]} is passing back…`;
-      case 'meld':
-        return 'Meld is on the table.';
       case 'play':
+        if (humanClaims) return 'You will win the rest of the tricks.';
         return state.turn === 0 ? 'Your play.' : '';
       case 'trickEnd':
         return `${names[state.trickWinner]} take${state.trickWinner === 0 ? '' : 's'} the trick.`;
@@ -295,7 +300,7 @@ export function GameTable({ state, names, dispatch }: Props) {
           const cards = meldCardsFor(seat);
           if (cards.length === 0) return null;
           const mx = sx + (50 - sx) * 0.42;
-          const my = sy + (44 - sy) * (seat === 0 ? 0.34 : 0.45);
+          const my = sy + (44 - sy) * (seat === 0 ? 0.4 : 0.72);
           return (
             <div key={`meld-${seat}`} className="meld-row" style={{ left: `${mx}%`, top: `${my}%` }}>
               <span className="meld-row-badge">{state.melds[seat]!.total}</span>
@@ -321,7 +326,7 @@ export function GameTable({ state, names, dispatch }: Props) {
                 ].filter(Boolean).join(' ')}
                 style={{
                   left: doCollect ? `${wx}%` : `calc(50% + ${ox}px)`,
-                  top: doCollect ? `${Math.min(wy, 88)}%` : `calc(45% + ${oy}px)`,
+                  top: doCollect ? `${Math.min(wy, 88)}%` : `calc(52% + ${oy}px)`,
                   ['--fx' as string]: `${sx}%`,
                   ['--fy' as string]: `${Math.min(sy, 96)}%`,
                   ['--rot' as string]: `${((p.seat * 47 + i * 13) % 9) - 4}deg`,
@@ -372,15 +377,6 @@ export function GameTable({ state, names, dispatch }: Props) {
           </div>
         )}
 
-        {state.trump && state.phase !== 'gameOver' && (
-          <div className="trump-pill">
-            <span className={`trump-sym ${isRed(state.trump) ? 'suit-red' : ''}`}>
-              {SUIT_SYMBOL[state.trump]}
-            </span>
-            <span className="trump-label">{SUIT_NAME[state.trump]}<em>trump</em></span>
-          </div>
-        )}
-
         {statusText && <div className="status-bar">{statusText}</div>}
 
         {state.phase === 'bidding' && state.turn === 0 && (
@@ -427,7 +423,7 @@ export function GameTable({ state, names, dispatch }: Props) {
           </div>
         )}
         {state.phase === 'meld' && (
-          <div className="action-panel">
+          <div className="action-panel meld-panel">
             <div className="bid-controls">
               <button className="btn btn-gold" onClick={() => dispatch({ type: 'CONTINUE' })}>
                 Play hand
