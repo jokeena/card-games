@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useState } from 'react';
 import { botAction, Difficulty } from './bots/bot';
-import { gameReducer, GameState, newGame } from './engine/game';
+import { GameAction, gameReducer, GameState, newGame } from './engine/game';
 import { MODES, ModeConfig, partnerOf } from './engine/modes';
 import { winsRemainingTricks } from './engine/tricks';
 import { SUIT_NAME, SUIT_SYMBOL, isCounter, isRed } from './engine/types';
@@ -34,6 +34,39 @@ function actorFor(state: GameState): number | null {
   }
 }
 
+/**
+ * States the game sits in waiting for the human — the targets undo jumps
+ * back to. Jumping only to these keeps undo useful: landing on a bot's turn
+ * would just let the bot replay its move immediately.
+ */
+function isHumanDecision(s: GameState): boolean {
+  if (actorFor(s) === 0) return true;
+  return s.phase === 'meld' || s.phase === 'handReview' || s.phase === 'handEnd';
+}
+
+interface Hist {
+  present: GameState;
+  past: GameState[];
+  /** True right after an undo — pauses auto throw-in/claim so the position isn't instantly replayed. */
+  undone: boolean;
+}
+
+type HistAction = GameAction | { type: 'UNDO' };
+
+function histReducer(h: Hist, action: HistAction): Hist {
+  if (action.type === 'UNDO') {
+    const past = [...h.past];
+    while (past.length > 0) {
+      const s = past.pop()!;
+      if (isHumanDecision(s)) return { present: s, past, undone: true };
+    }
+    return h;
+  }
+  const next = gameReducer(h.present, action);
+  if (next === h.present) return h;
+  return { present: next, past: [...h.past.slice(-300), h.present], undone: false };
+}
+
 /** ms of "thinking" per phase — bidding snappy, play measured. */
 function botDelay(state: GameState): number {
   if (state.phase === 'bidding') return 160;
@@ -42,9 +75,12 @@ function botDelay(state: GameState): number {
 }
 
 function Game({ mode, difficulty, onExit }: { mode: ModeConfig; difficulty: Difficulty; onExit: () => void }) {
-  const [state, dispatch] = useReducer(gameReducer, mode, newGame);
+  const [hist, dispatch] = useReducer(
+    histReducer, mode, (m: ModeConfig): Hist => ({ present: newGame(m), past: [], undone: false }));
+  const { present: state, past, undone } = hist;
   const [showRules, setShowRules] = useState(false);
   const [names] = useState(() => drawNames(mode.players));
+  const canUndo = past.some(isHumanDecision);
 
   useEffect(() => {
     if (state.phase === 'trickEnd') {
@@ -62,7 +98,7 @@ function Game({ mode, difficulty, onExit }: { mode: ModeConfig; difficulty: Diff
         // Even taking every trick can't cover the bid: go set automatically.
         const maxTrickPoints =
           state.hands.flat().filter(isCounter).length + state.discard.filter(isCounter).length + 1;
-        if (tricksNeeded > maxTrickPoints) {
+        if (tricksNeeded > maxTrickPoints && !undone) {
           const t = setTimeout(() => dispatch({ type: 'THROW_IN', seat: 0 }), 1200);
           return () => clearTimeout(t);
         }
@@ -70,9 +106,11 @@ function Game({ mode, difficulty, onExit }: { mode: ModeConfig; difficulty: Diff
       }
 
       // A bot bid winner may look at the table meld and concede a hopeless bid.
+      // (Slower when the human just received returned cards, so they can be read.)
       const limit = difficulty === 'hard' ? 21 : difficulty === 'medium' ? 24 : 26;
-      if (tricksNeeded > limit) {
-        const t = setTimeout(() => dispatch({ type: 'THROW_IN', seat: state.bidWinner }), 900);
+      if (tricksNeeded > limit && !undone) {
+        const wait = partnerOf(mode, state.bidWinner) === 0 ? 2600 : 900;
+        const t = setTimeout(() => dispatch({ type: 'THROW_IN', seat: state.bidWinner }), wait);
         return () => clearTimeout(t);
       }
       return; // human clicks "Play hand"
@@ -80,7 +118,7 @@ function Game({ mode, difficulty, onExit }: { mode: ModeConfig; difficulty: Diff
 
     // Human on lead and guaranteed the rest no matter the order: claim them.
     // With a single card left, just let it be played out normally.
-    if (state.phase === 'play' && state.turn === 0 && state.trick.length === 0 &&
+    if (state.phase === 'play' && state.turn === 0 && state.trick.length === 0 && !undone &&
         state.hands[0].length > 1 && winsRemainingTricks(state.hands, 0, state.trump!)) {
       const t = setTimeout(() => dispatch({ type: 'CLAIM_REST', seat: 0 }), 1600);
       return () => clearTimeout(t);
@@ -94,12 +132,15 @@ function Game({ mode, difficulty, onExit }: { mode: ModeConfig; difficulty: Diff
       }, botDelay(state));
       return () => clearTimeout(t);
     }
-  }, [state, difficulty, mode]);
+  }, [state, undone, difficulty, mode]);
 
   return (
     <div className="game-root">
       <header className="top-bar">
         <button className="bar-btn" onClick={onExit}>← Menu</button>
+        <button className="bar-btn" disabled={!canUndo} onClick={() => dispatch({ type: 'UNDO' })}>
+          ↩ Undo
+        </button>
         <span className="bar-title">{mode.label}</span>
         <span className="bar-spacer" />
         {state.trump && state.phase !== 'gameOver' && (

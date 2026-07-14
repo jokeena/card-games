@@ -119,11 +119,15 @@ export function GameTable({ state, names, dispatch }: Props) {
   const positions = SEAT_POS[mode.players];
   const [selection, setSelection] = useState<string[]>([]);
   const [collect, setCollect] = useState(false);
+  const [ackReturn, setAckReturn] = useState(false);
   const [flights, setFlights] = useState<Flight[]>([]);
   const prevPhase = useRef(state.phase);
   const flightKey = useRef(0);
 
   useEffect(() => setSelection([]), [state.phase, state.handNumber]);
+  useEffect(() => {
+    if (state.phase !== 'meld') setAckReturn(false);
+  }, [state.phase, state.handNumber]);
 
   // Trick pickup: let the completed trick sit in the middle, then sweep it to the winner.
   useEffect(() => {
@@ -177,9 +181,13 @@ export function GameTable({ state, names, dispatch }: Props) {
   );
   const legalIds = new Set(legal.map((c) => c.id));
 
-  const hand = sortHand(state.hands[0] ?? [], state.trump);
+  const isReview = state.phase === 'handReview';
+  const hand = sortHand((isReview ? state.playHands[0] : state.hands[0]) ?? [], state.trump);
   const humanActive = isActing(state, 0, partner) || humanTurnToPlay;
-  const meldVisible = state.phase === 'meld';
+  // Partner won the bid and returned cards: show those first, meld after "OK".
+  const returnPending =
+    state.phase === 'meld' && partner === 0 && state.passBuffer.length > 0 && !ackReturn;
+  const meldVisible = state.phase === 'meld' && !returnPending;
   const meldKnown = state.melds.some((m) => m !== null);
 
   const toggleSelect = (id: string) => {
@@ -362,18 +370,50 @@ export function GameTable({ state, names, dispatch }: Props) {
         </div>
 
         {/* Cards the human just received from a pass */}
-        {state.passBuffer.length > 0 &&
-          ((state.phase === 'pass2' && state.bidWinner === 0) ||
-            (state.phase === 'meld' && partner === 0)) && (
+        {state.passBuffer.length > 0 && state.phase === 'pass2' && state.bidWinner === 0 && (
           <div className="received-row">
-            <div className="received-label">
-              {state.phase === 'pass2'
-                ? `${names[partner!]} passed you`
-                : `${names[state.bidWinner]} returned to you`}
-            </div>
+            <div className="received-label">{names[partner!]} passed you</div>
             <div className="received-cards">
               {state.passBuffer.map((c) => <CardView key={c.id} card={c} size="mid" />)}
             </div>
+          </div>
+        )}
+
+        {/* Partner returned cards: acknowledge before the meld is revealed */}
+        {returnPending && (
+          <div className="received-row received-ack">
+            <div className="received-label">{names[state.bidWinner]} returned to you</div>
+            <div className="received-cards">
+              {state.passBuffer.map((c) => <CardView key={c.id} card={c} size="mid" />)}
+            </div>
+            <button className="btn btn-gold" onClick={() => setAckReturn(true)}>
+              OK — show the meld
+            </button>
+          </div>
+        )}
+
+        {/* End of hand: everyone's cards from the start of play, face up */}
+        {isReview && positions.map(([sx, sy], seat) => {
+          if (seat === 0) return null;
+          const cards = sortHand(state.playHands[seat] ?? [], state.trump);
+          if (cards.length === 0) return null;
+          const rx = sx + (50 - sx) * 0.52;
+          const ry = sy + (47 - sy) * 0.6;
+          return (
+            <div key={`review-${seat}`} className="review-row" style={{ left: `${rx}%`, top: `${ry}%` }}>
+              <span className="review-name">{names[seat]}</span>
+              <div className="review-cards">
+                {cards.map((c) => <CardView key={c.id} card={c} size="small" />)}
+              </div>
+            </div>
+          );
+        })}
+        {isReview && (
+          <div className="action-panel review-panel">
+            <div className="panel-label">The hands, as played this round</div>
+            <button className="btn btn-gold" onClick={() => dispatch({ type: 'CONTINUE' })}>
+              Show the score
+            </button>
           </div>
         )}
 
@@ -422,7 +462,7 @@ export function GameTable({ state, names, dispatch }: Props) {
             </button>
           </div>
         )}
-        {state.phase === 'meld' && (
+        {state.phase === 'meld' && !returnPending && (
           <div className="action-panel meld-panel">
             <div className="bid-controls">
               <button className="btn btn-gold" onClick={() => dispatch({ type: 'CONTINUE' })}>

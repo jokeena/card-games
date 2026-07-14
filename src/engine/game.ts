@@ -13,6 +13,7 @@ export type Phase =
   | 'meld'     // melds revealed, waiting for continue
   | 'play'
   | 'trickEnd' // completed trick shown, waiting for continue
+  | 'handReview' // all hands from the start of play shown face up, waiting for continue
   | 'handEnd'  // hand summary shown, waiting for continue
   | 'gameOver';
 
@@ -55,6 +56,8 @@ export interface GameState {
 
   melds: (MeldResult | null)[];
   passBuffer: Card[];
+  /** Each hand as it stood when play began (post-kitty, post-pass) — for the end-of-hand reveal. */
+  playHands: Card[][];
 
   trick: Played[];
   trickWinner: number;
@@ -106,6 +109,7 @@ function freshHand(state: GameState, dealer: number): GameState {
     trump: null,
     melds: Array(mode.players).fill(null),
     passBuffer: [],
+    playHands: [],
     trick: [],
     trickWinner: -1,
     tricksPlayed: 0,
@@ -137,6 +141,7 @@ export function newGame(mode: ModeConfig): GameState {
     trump: null,
     melds: [],
     passBuffer: [],
+    playHands: [],
     trick: [],
     trickWinner: -1,
     tricksPlayed: 0,
@@ -183,7 +188,7 @@ function startDeclaration(state: GameState, winner: number, bid: number, stuck: 
 
 function enterMeld(state: GameState): GameState {
   const melds = state.hands.map((h) => computeMeld(h, state.trump!));
-  return { ...state, phase: 'meld', melds };
+  return { ...state, phase: 'meld', melds, playHands: state.hands.map((h) => [...h]) };
 }
 
 function removeByIds(hand: Card[], ids: string[]): { kept: Card[]; taken: Card[] } {
@@ -402,15 +407,16 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         t === team ? [...pile, ...remaining] : pile);
       const teamTookTrick = [...state.teamTookTrick];
       teamTookTrick[team] = true;
-      return scoreHand({
+      return {
         ...state,
+        phase: 'handReview',
         hands: state.hands.map(() => []),
         captured,
         teamTookTrick,
         tricksPlayed: mode.handSize,
         lastTrickTeam: team,
         log: log(state, `Seat ${action.seat} wins the rest of the tricks.`),
-      });
+      };
     }
 
     case 'THROW_IN': {
@@ -449,9 +455,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         return { ...state, phase: 'play', turn: state.bidWinner, trick: [] };
       }
       if (state.phase === 'trickEnd') {
-        if (state.tricksPlayed === mode.handSize) return scoreHand(state);
+        if (state.tricksPlayed === mode.handSize) return { ...state, phase: 'handReview', trick: [] };
         return { ...state, phase: 'play', trick: [], turn: state.trickWinner };
       }
+      if (state.phase === 'handReview') return scoreHand(state);
       if (state.phase === 'handEnd') {
         if (state.winnerTeam !== null) return { ...state, phase: 'gameOver' };
         return freshHand(state, (state.dealer + 1) % n);

@@ -4,6 +4,7 @@
   --navy: #2f62b4;
   --navy-deep: #1d4184;
   --gold: #d4af37;
+  --gold-deep: #b8912a;
   --felt-1: #4e9c58;
   --felt-2: #3b8347;
   --felt-3: #2a6435;
@@ -12,12 +13,16 @@
   --ink: #2b3040;
   --ink-dim: #77716a;
   --red: #c0392b;
+  --serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --sans: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif;
 }
 
 body {
-  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--sans);
   background:
-    radial-gradient(ellipse at 50% -20%, #faf7ee 0%, #eee9db 55%, #e2dccb 100%);
+    repeating-linear-gradient(45deg, rgba(110, 92, 50, 0.025) 0 2px, transparent 2px 11px),
+    repeating-linear-gradient(-45deg, rgba(110, 92, 50, 0.02) 0 2px, transparent 2px 11px),
+    radial-gradient(ellipse at 50% -20%, #faf7ee 0%, #eee9db 55%, #e0d9c6 100%);
   color: var(--ink);
   overflow: hidden;
 }
@@ -37,21 +42,42 @@ body {
   background: linear-gradient(170deg, #fffefa, #f3efe2);
   border: 1px solid #d9d3be;
   border-radius: 20px;
-  box-shadow: 0 30px 80px rgba(70, 58, 25, 0.18);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.7),
+    0 0 0 5px rgba(212, 175, 55, 0.12),
+    0 30px 80px rgba(70, 58, 25, 0.18);
   padding: 44px 52px;
   width: min(560px, 92vw);
   text-align: center;
   animation: modalIn 0.35s ease-out;
+  position: relative;
+}
+.menu-card::before {
+  content: '';
+  position: absolute;
+  inset: 9px;
+  border: 1px solid rgba(184, 145, 42, 0.35);
+  border-radius: 13px;
+  pointer-events: none;
 }
 .menu h1 {
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 3rem;
+  font-family: var(--serif);
+  font-size: 3.1rem;
+  font-weight: 600;
   letter-spacing: 3px;
   color: var(--navy-deep);
 }
 .menu h1 span { color: var(--ink); }
 .menu h1 .suit-red { color: var(--red); }
-.menu-sub { color: var(--ink-dim); margin-top: 6px; font-style: italic; }
+.menu-sub {
+  color: var(--ink-dim);
+  margin-top: 6px;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 1.02rem;
+}
+.menu-sub::before { content: '— '; color: var(--gold-deep); }
+.menu-sub::after { content: ' —'; color: var(--gold-deep); }
 .menu-section {
   margin: 30px 0 12px;
   text-transform: uppercase;
@@ -139,20 +165,22 @@ body {
   font-size: 0.85rem;
   transition: all 0.15s;
 }
-.bar-btn:hover { border-color: var(--navy); color: var(--navy-deep); }
+.bar-btn:hover:not(:disabled) { border-color: var(--navy); color: var(--navy-deep); }
+.bar-btn:disabled { opacity: 0.4; cursor: default; }
 .bar-btn-round {
   border-radius: 50%;
   width: 30px; height: 30px;
   padding: 0;
-  font-family: Georgia, serif;
+  font-family: var(--serif);
   font-style: italic;
   font-weight: 700;
 }
 .bar-title {
-  font-family: Georgia, serif;
-  font-size: 1rem;
+  font-family: var(--serif);
+  font-size: 1.05rem;
+  font-weight: 600;
   color: var(--navy-deep);
-  letter-spacing: 1px;
+  letter-spacing: 1.5px;
   white-space: nowrap;
 }
 .team-dot {
@@ -176,13 +204,29 @@ body {
   margin: 10px 14px 0;
   border-radius: 46% 46% 38% 38% / 22% 22% 16% 16%;
   background:
+    repeating-linear-gradient(55deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 4px),
+    repeating-linear-gradient(-35deg, rgba(0, 30, 10, 0.03) 0 1px, transparent 1px 4px),
     radial-gradient(ellipse at 50% 35%, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
   box-shadow:
     inset 0 0 70px rgba(0, 40, 10, 0.35),
     inset 0 0 8px rgba(255, 255, 255, 0.12),
+    0 0 0 3px #c8a26e,
     0 0 0 9px #b08d5f,
     0 0 0 11px #8f6f45,
+    0 0 0 12px rgba(60, 44, 16, 0.5),
     0 14px 36px rgba(90, 70, 30, 0.35);
+}
+/* Center emblem woven into the cloth */
+.felt::before {
+  content: '♠';
+  position: absolute;
+  left: 50%; top: 46%;
+  transform: translate(-50%, -50%);
+  font-size: min(24vh, 15vw);
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.05);
+  text-shadow: 0 1px 0 rgba(0, 40, 10, 0.12);
+  pointer-events: none;
 }
 .felt::after {
   content: '';
@@ -190,6 +234,7 @@ body {
   inset: 7%;
   border-radius: inherit;
   border: 2px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.04);
   pointer-events: none;
 }
 
@@ -200,6 +245,7 @@ body {
   z-index: 20;
   background: var(--panel);
   border: 1px solid var(--panel-edge);
+  border-top: 3px solid var(--gold);
   backdrop-filter: blur(8px);
   border-radius: 12px;
   padding: 10px 14px;
@@ -275,7 +321,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-family: Georgia, serif;
+  font-family: var(--serif);
   font-size: 1.35rem;
   font-weight: 700;
   color: var(--ink);
@@ -302,7 +348,7 @@ body {
   font-weight: 800;
   border-radius: 9px;
   padding: 2px 6px;
-  font-family: 'Segoe UI', sans-serif;
+  font-family: var(--sans);
 }
 .chip-dealer {
   bottom: -4px; right: -10px;
@@ -500,6 +546,52 @@ body {
   box-shadow: 0 3px 10px rgba(0, 30, 10, 0.25);
 }
 .received-cards { display: flex; gap: 8px; }
+.received-ack {
+  z-index: 18;
+  background: linear-gradient(170deg, #fbf9f1, #efeadb);
+  border: 1px solid var(--panel-edge);
+  border-radius: 16px;
+  padding: 16px 22px 18px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+}
+.received-ack .received-label {
+  background: none;
+  border: none;
+  box-shadow: none;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 1rem;
+  padding: 0;
+}
+
+/* ================= End-of-hand review ================= */
+.review-row {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  z-index: 9;
+  animation: fadeIn 0.4s ease-out;
+}
+.review-name {
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px;
+  padding: 1px 10px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--navy-deep);
+  box-shadow: 0 2px 6px rgba(0, 30, 10, 0.25);
+}
+.review-cards {
+  display: flex;
+  justify-content: center;
+}
+.review-cards .card { margin: 0 -17px; }
+.review-cards .card:hover { z-index: 3; }
+.review-panel { bottom: 30px; }
 
 /* ================= Status & action panels ================= */
 .status-bar {
@@ -511,7 +603,9 @@ body {
   backdrop-filter: blur(6px);
   border-radius: 18px;
   padding: 7px 22px;
-  font-size: 0.92rem;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 0.98rem;
   z-index: 10;
   white-space: nowrap;
   box-shadow: 0 3px 10px rgba(0, 30, 10, 0.22);
@@ -873,8 +967,9 @@ body {
   to { transform: scale(1) translateY(0); opacity: 1; }
 }
 .modal h2 {
-  font-family: Georgia, serif;
-  font-size: 1.45rem;
+  font-family: var(--serif);
+  font-size: 1.5rem;
+  font-weight: 600;
   color: var(--navy-deep);
   margin-bottom: 6px;
 }
