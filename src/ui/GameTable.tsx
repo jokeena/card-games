@@ -12,6 +12,15 @@ const SEAT_POS: Record<number, [number, number][]> = {
   6: [[50, 100], [7, 62], [26, 14], [50, 14], [74, 14], [93, 62]],
 };
 
+/* Portrait phone: the felt is tall and narrow, so seats hug the top arc
+   and the sides sit lower where there's width to spare. */
+const MOBILE_SEAT_POS: Record<number, [number, number][]> = {
+  3: [[50, 100], [14, 34], [86, 34]],
+  4: [[50, 100], [11, 44], [50, 16], [89, 44]],
+  5: [[50, 100], [9, 54], [26, 19], [74, 19], [91, 54]],
+  6: [[50, 100], [9, 58], [26, 19], [50, 15], [74, 19], [91, 58]],
+};
+
 export const TEAM_COLORS = ['#53b4e8', '#f0a53c', '#b26fd1', '#6dbf73', '#e06868'];
 
 /**
@@ -24,6 +33,27 @@ const TRICK_OFFSET: Record<number, [number, number][]> = {
   5: [[0, 86], [-132, 12], [-46, -54], [46, -54], [132, 12]],
   6: [[0, 58], [-90, 58], [-90, -56], [0, -56], [90, -56], [90, 58]],
 };
+
+/* Tighter clusters for the smaller mobile cards (58px wide). */
+const MOBILE_TRICK_OFFSET: Record<number, [number, number][]> = {
+  3: [[0, 54], [-64, -26], [64, -26]],
+  4: [[0, 62], [-68, 0], [0, -46], [68, 0]],
+  5: [[0, 66], [-94, 10], [-36, -48], [36, -48], [94, 10]],
+  6: [[0, 48], [-66, 48], [-66, -46], [0, -46], [66, -46], [66, 48]],
+};
+
+/** True on phone-sized viewports; drives the alternate seat geometry. */
+function useIsNarrow(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 740px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 740px)');
+    const onChange = (e: MediaQueryListEvent) => setNarrow(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return narrow;
+}
 
 interface Props {
   state: GameState;
@@ -165,7 +195,9 @@ function Strewn({ count }: { count: number }) {
 
 export function GameTable({ state, names, dispatch }: Props) {
   const { mode } = state;
-  const positions = SEAT_POS[mode.players];
+  const narrow = useIsNarrow();
+  const positions = (narrow ? MOBILE_SEAT_POS : SEAT_POS)[mode.players];
+  const trickOffsets = (narrow ? MOBILE_TRICK_OFFSET : TRICK_OFFSET)[mode.players];
   const [selection, setSelection] = useState<string[]>([]);
   const [collect, setCollect] = useState(false);
   const [ackReturn, setAckReturn] = useState(false);
@@ -180,17 +212,22 @@ export function GameTable({ state, names, dispatch }: Props) {
     if (state.phase !== 'meld') setAckReturn(false);
   }, [state.phase, state.handNumber]);
 
-  // Flip the kitty face-up for everyone when the auction ends.
+  // Flip the kitty face-up for everyone when the auction ends. The hide
+  // timer lives in a ref so a quick phase change (human names trump fast)
+  // can't cancel it and leave the reveal stuck on screen.
+  const kittyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => {
     const prev = prevForKitty.current;
     prevForKitty.current = state.phase;
     if (prev === 'bidding' && state.phase === 'trump' && mode.kittySize > 0) {
       setKittyShow(true);
-      const t = setTimeout(() => setKittyShow(false), 2400);
-      return () => clearTimeout(t);
+      clearTimeout(kittyTimer.current);
+      kittyTimer.current = setTimeout(() => setKittyShow(false), 2400);
+    } else if (state.phase !== 'trump' && state.phase !== 'discard') {
+      setKittyShow(false);
     }
-    if (state.phase === 'bidding') setKittyShow(false);
   }, [state.phase, mode.kittySize]);
+  useEffect(() => () => clearTimeout(kittyTimer.current), []);
 
   // Trick pickup: let the completed trick sit in the middle, then sweep it to the winner.
   useEffect(() => {
@@ -202,7 +239,11 @@ export function GameTable({ state, names, dispatch }: Props) {
     setCollect(false);
   }, [state.phase, state.tricksPlayed]);
 
-  // Card-pass flights between partner and bid winner.
+  // Card-pass flights between partner and bid winner. Removal timers live in
+  // a ref cleared only on unmount — an effect-cleanup timer would be cancelled
+  // by the next phase change (bots return cards in 500ms) and strand the
+  // spent flight in the list forever.
+  const flightTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   useEffect(() => {
     const prev = prevPhase.current;
     prevPhase.current = state.phase;
@@ -219,10 +260,17 @@ export function GameTable({ state, names, dispatch }: Props) {
     if (flight) {
       const f = flight;
       setFlights((fs) => [...fs, f]);
-      const t = setTimeout(() => setFlights((fs) => fs.filter((x) => x.key !== f.key)), 1100);
-      return () => clearTimeout(t);
+      const t = setTimeout(() => {
+        flightTimers.current.delete(t);
+        setFlights((fs) => fs.filter((x) => x.key !== f.key));
+      }, 1100);
+      flightTimers.current.add(t);
     }
   }, [state.phase, state.bidWinner, mode]);
+  useEffect(() => {
+    const timers = flightTimers.current;
+    return () => timers.forEach(clearTimeout);
+  }, []);
 
   const partner = state.bidWinner >= 0 ? partnerOf(mode, state.bidWinner) : null;
 
@@ -383,17 +431,27 @@ export function GameTable({ state, names, dispatch }: Props) {
 
         {/* Meld laid out on the table. Six-handed, the three top seats sit so
             close that centered rows collide — spread the side melds outward
-            and drop the middle one toward the table center. */}
+            and drop the middle one toward the table center. Portrait phones
+            instead stack every meld down the center, labeled by name. */}
         {meldVisible && positions.map(([sx, sy], seat) => {
           const cards = meldCardsFor(seat);
           if (cards.length === 0) return null;
           const spread = mode.players === 6 ? 0.12 : 0.42;
-          const mx = sx + (50 - sx) * spread;
+          let mx = sx + (50 - sx) * spread;
           const deep = mode.players === 6 && seat === 3 ? 1.05 : 0.72;
-          const my = sy + (44 - sy) * (seat === 0 ? 0.4 : deep);
+          let my = sy + (44 - sy) * (seat === 0 ? 0.4 : deep);
+          if (narrow) {
+            mx = 50;
+            const order = seat === 0 ? mode.players - 1 : seat - 1;
+            my = 15 + order * (mode.players >= 5 ? 12.5 : 15);
+          }
           return (
             <div key={`meld-${seat}`} className="meld-row" style={{ left: `${mx}%`, top: `${my}%` }}>
-              <span className="meld-row-badge">{state.melds[seat]!.total}</span>
+              <span className="meld-row-badge">
+                {narrow
+                  ? `${seat === 0 ? 'You' : names[seat]} · ${state.melds[seat]!.total}`
+                  : state.melds[seat]!.total}
+              </span>
               {cards.map((c) => <CardView key={c.id} card={c} size="mid" />)}
             </div>
           );
@@ -403,7 +461,7 @@ export function GameTable({ state, names, dispatch }: Props) {
         <div className="trick-area">
           {state.trick.map((p, i) => {
             const [sx, sy] = positions[p.seat];
-            const [ox, oy] = TRICK_OFFSET[mode.players][p.seat];
+            const [ox, oy] = trickOffsets[p.seat];
             const doCollect = isTrickEnd && collect;
             const [wx, wy] = doCollect ? positions[state.trickWinner] : [0, 0];
             const leading = (state.phase === 'play' || isTrickEnd) &&
@@ -453,8 +511,10 @@ export function GameTable({ state, names, dispatch }: Props) {
           )}
         </div>
 
-        {/* The kitty, flipped face-up for everyone before the winner takes it */}
-        {kittyShow && state.kitty.length > 0 && (
+        {/* The kitty, flipped face-up for everyone before the winner takes it.
+            Belt and braces: never past the trump/discard steps. */}
+        {kittyShow && state.kitty.length > 0 &&
+          (state.phase === 'trump' || state.phase === 'discard') && (
           <div className="kitty-reveal">
             <div className="received-label">{names[state.bidWinner]} takes the kitty</div>
             <div className="received-cards">
@@ -486,13 +546,17 @@ export function GameTable({ state, names, dispatch }: Props) {
           </div>
         )}
 
-        {/* End of hand: everyone's cards from the start of play, face up */}
+        {/* End of hand: everyone's cards from the start of play, face up.
+            Portrait phones stack the rows down the center instead of
+            spreading them to the seats. */}
         {isReview && positions.map(([sx, sy], seat) => {
           if (seat === 0) return null;
           const cards = sortHand(state.playHands[seat] ?? [], state.trump);
           if (cards.length === 0) return null;
-          const rx = sx + (50 - sx) * (mode.players === 6 ? 0.2 : 0.52);
-          const ry = sy + (47 - sy) * 0.6;
+          const rx = narrow ? 50 : sx + (50 - sx) * (mode.players === 6 ? 0.2 : 0.52);
+          const ry = narrow
+            ? 15 + (seat - 1) * (mode.players >= 5 ? 12.5 : 15)
+            : sy + (47 - sy) * 0.6;
           return (
             <div key={`review-${seat}`} className="review-row" style={{ left: `${rx}%`, top: `${ry}%` }}>
               <span className="review-name">{names[seat]}</span>

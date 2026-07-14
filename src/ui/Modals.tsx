@@ -28,6 +28,8 @@ function HandEndModal({ state, names, onContinue }: Pick<Props, 'state' | 'names
     <div className="modal-backdrop">
       <div className="modal">
         <h2 className={r.made ? 'result-made' : 'result-set'}>{title}</h2>
+        {/* Phones hide the in-table bid chip (it wraps badly) and show this instead */}
+        <div className="modal-bidline">Bid {r.bid}</div>
         <table className="result-table">
           <thead>
             <tr><th></th><th>Meld</th><th>Tricks</th><th>Hand</th><th>Score</th></tr>

@@ -17,6 +17,7 @@
   --sans: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif;
 }
 
+html { touch-action: manipulation; }
 body {
   font-family: var(--sans);
   background:
@@ -25,14 +26,20 @@ body {
     radial-gradient(ellipse at 50% -20%, #faf7ee 0%, #eee9db 55%, #e0d9c6 100%);
   color: var(--ink);
   overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
 }
 
-#root, .game-root { height: 100vh; }
+/* dvh tracks the real visible height on iOS (URL bar, home indicator);
+   identical to vh on desktop. */
+#root, .game-root { height: 100vh; height: 100dvh; }
 .game-root { display: flex; flex-direction: column; }
 
 /* ================= Menu ================= */
 .menu {
   height: 100vh;
+  height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1145,6 +1152,7 @@ body {
   margin-bottom: 6px;
 }
 .modal-note { color: var(--ink-dim); font-size: 0.8rem; margin: 14px 0; }
+.modal-bidline { display: none; }
 .result-made { color: #2e7d3a !important; }
 .result-set { color: var(--red) !important; }
 
@@ -1190,4 +1198,174 @@ body {
 
 @media (max-width: 800px) {
   .rules-grid { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
+   Portrait phone (iOS add-to-home-screen). Everything below is
+   scoped to narrow viewports — the desktop layout is untouched.
+   ============================================================ */
+@media (max-width: 740px) {
+  /* --- chrome & safe areas (notch, home indicator) --- */
+  .top-bar {
+    gap: 8px;
+    padding: 6px 8px;
+    padding-top: calc(6px + env(safe-area-inset-top));
+  }
+  .bar-title { display: none; }
+  .bar-btn { padding: 5px 10px; font-size: 0.78rem; }
+  .bar-btn-round { width: 27px; height: 27px; }
+  /* In flow on the right instead of absolutely centered — it must never
+     cover the Undo button on a narrow bar. */
+  .bar-trump {
+    position: static;
+    transform: none;
+    animation: none;
+    padding: 2px 10px 2px 8px;
+    font-size: 0.78rem;
+  }
+  .bar-trump-sym { font-size: 1.05rem; }
+
+  .felt { margin: 6px 6px 0; }
+
+  /* --- scoreboard: a slim strip across the top of the felt --- */
+  .board {
+    left: 8px; right: 8px; top: 6px;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 1px 12px;
+    padding: 4px 8px;
+    border-radius: 9px;
+    font-size: 0.72rem;
+  }
+  .board-head { display: none; }
+  .board-row { padding: 0; gap: 4px; }
+  .board-name { max-width: 96px; overflow: hidden; text-overflow: ellipsis; }
+  .board-meld { font-size: 0.64rem; padding: 0 5px; }
+  .board-score { font-size: 0.82rem; min-width: 0; }
+  .board-bid {
+    margin: 0; padding: 0;
+    border: none;
+    font-size: 0.68rem;
+    white-space: nowrap;
+  }
+
+  /* --- seats --- */
+  .seat { width: 110px; }
+  .avatar { width: 42px; height: 42px; font-size: 0.95rem; border-width: 2.5px; }
+  .avatar-you { width: 44px; height: 44px; font-size: 0.78rem; }
+  .seat-name { font-size: 0.78rem; }
+  .seat-fan { height: 44px; }
+  .fan-back {
+    width: 30px; height: 42px;
+    margin: 0 -11px;
+    border-width: 2px;
+    border-radius: 4px;
+  }
+  .seat-bubble { font-size: 0.68rem; padding: 1px 8px; }
+  .bubble-pass { font-size: 0.58rem; padding: 2px 8px; }
+  .chip { font-size: 0.52rem; padding: 1px 4px; }
+  .seat-strewn { display: none; }
+
+  /* --- cards (three sizes scaled for a 390px table) --- */
+  .card { width: 58px; height: 82px; border-radius: 7px; }
+  .card-mid { width: 48px; height: 68px; }
+  .card-small { width: 40px; height: 57px; }
+  .card-corner { font-size: 0.92rem; top: 3px; left: 4px; }
+  .card-corner-flip { top: auto; left: auto; bottom: 3px; right: 4px; }
+  .card-mid .card-corner { font-size: 0.74rem; }
+  .card-small .card-corner { font-size: 0.62rem; }
+  .card-ace { font-size: 2.1rem; }
+  .card-mid .card-ace { font-size: 1.65rem; }
+  .card-small .card-ace { font-size: 1.35rem; }
+  .card-pips { inset: 6px 9px; }
+  .pip { font-size: 0.7rem; }
+  .card-mid .card-pips { inset: 5px 8px; }
+  .card-mid .pip { font-size: 0.58rem; }
+  .card-small .card-pips { inset: 4px 7px; }
+  .card-small .pip { font-size: 0.5rem; }
+  .card-court { inset: 9px 10px; }
+  .card-mid .card-court { inset: 7px 8px; }
+  .card-small .card-court { inset: 6px 7px; }
+  .card-selected { outline-width: 2px; }
+
+  /* --- human hand: full width (no avatar/pile), tight overlap, fixed height --- */
+  .hand-row {
+    gap: 0;
+    padding: 2px 6px calc(8px + env(safe-area-inset-bottom));
+    height: calc(112px + env(safe-area-inset-bottom));
+  }
+  .hand-row .hand-side { display: none; }
+  .hand-cards { padding-top: 18px; }
+  .hand-slot { margin: 0 -19px; }
+  .hand-slot:has(.card-clickable):hover { transform: none; }
+
+  /* --- table overlays --- */
+  .meld-row .card { margin: 0 -16px; }
+  /* Stacked meld rows carry "Name · total" centered above the cards */
+  .meld-row-badge {
+    font-size: 0.62rem;
+    padding: 1px 8px;
+    top: -11px;
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+  .review-cards .card { margin: 0 -14px; }
+  .review-name { font-size: 0.62rem; padding: 0 8px; }
+  .review-panel { bottom: 16px; }
+  .received-label { font-size: 0.74rem; padding: 4px 12px; }
+  .received-cards { gap: 5px; }
+  .received-ack { padding: 12px 14px 14px; }
+  .received-ack .received-label { font-size: 0.85rem; }
+  .kitty-reveal { top: 36%; }
+  .strewn { transform: scale(0.8); }
+
+  /* --- panels & controls --- */
+  .status-bar { font-size: 0.8rem; padding: 5px 14px; bottom: 10px; white-space: normal; text-align: center; max-width: 88vw; }
+  .action-panel { padding: 10px 12px; bottom: 46px; }
+  .meld-panel { bottom: 4px; }
+  .panel-label { font-size: 0.72rem; margin-bottom: 7px; }
+  .bid-controls { gap: 7px; }
+  .bid-pass { padding: 9px 14px; font-size: 0.8rem; }
+  .bid-step { width: 36px; font-size: 1.15rem; }
+  .bid-main { padding: 9px 18px; font-size: 0.88rem; }
+  .suit-btn { width: 48px; height: 48px; font-size: 1.7rem; }
+  .pass-tray { padding: 10px 12px 12px; gap: 7px; bottom: 12px; }
+  .tray-label { font-size: 0.76rem; }
+  .tray-slots { gap: 7px; }
+  .tray-empty { width: 48px; height: 68px; }
+  .btn { padding: 8px 14px; font-size: 0.82rem; }
+  .btn-confirm { padding: 8px 30px; }
+  .btn-lg { padding: 10px 22px; font-size: 0.9rem; }
+
+  /* --- modals & menu --- */
+  .modal { padding: 18px 14px; max-width: 94vw; max-height: 86vh; overflow: auto; }
+  .modal h2 { font-size: 1.2rem; }
+  .result-table { font-size: 0.78rem; }
+  .result-table th, .result-table td { padding: 6px 7px; }
+  .result-table .chip-bid { display: none; }
+  .modal-bidline {
+    display: block;
+    color: var(--ink-dim);
+    font-size: 0.78rem;
+    margin-top: 2px;
+  }
+  .stats-table { font-size: 0.68rem; }
+  .stats-table th, .stats-table td { padding: 5px 4px; }
+  .final-scores { font-size: 0.88rem; }
+
+  .menu { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  .menu-card { padding: 26px 18px; width: min(560px, 94vw); }
+  .menu h1 { font-size: 2.2rem; }
+  .menu-sub { font-size: 0.88rem; }
+  .menu-section { margin: 20px 0 9px; font-size: 0.64rem; }
+  .mode-card { padding: 14px 8px; font-size: 0.92rem; }
+  .segmented button { padding: 7px 18px; font-size: 0.82rem; }
+  .resume-title { font-size: 0.9rem; }
+  .resume-scores { font-size: 0.72rem; }
+  .menu-stats { margin-top: 18px; }
 }
