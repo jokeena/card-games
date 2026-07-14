@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GameAction, GameState } from '../engine/game';
 import { partnerOf } from '../engine/modes';
-import { legalPlays, winsRemainingTricks } from '../engine/tricks';
+import { legalPlays, winningIndex, winsRemainingTricks } from '../engine/tricks';
 import { Card, RANK_POWER, Suit, SUITS, SUIT_SYMBOL, isRed } from '../engine/types';
 import { CardView } from './CardView';
 
 const SEAT_POS: Record<number, [number, number][]> = {
-  3: [[50, 100], [10, 45], [90, 45]],
+  3: [[50, 100], [10, 52], [90, 52]],
   4: [[50, 100], [8, 50], [50, 16], [92, 50]],
-  5: [[50, 100], [7, 58], [22, 15], [78, 15], [93, 58]],
+  5: [[50, 100], [7, 64], [22, 15], [78, 15], [93, 64]],
   6: [[50, 100], [7, 62], [26, 14], [50, 14], [74, 14], [93, 62]],
 };
 
@@ -20,9 +20,9 @@ export const TEAM_COLORS = ['#53b4e8', '#f0a53c', '#b26fd1', '#6dbf73', '#e06868
  */
 const TRICK_OFFSET: Record<number, [number, number][]> = {
   3: [[0, 64], [-92, -32], [92, -32]],
-  4: [[0, 76], [-94, 0], [0, -76], [94, 0]],
-  5: [[0, 86], [-132, 12], [-44, -74], [44, -74], [132, 12]],
-  6: [[0, 58], [-90, 58], [-90, -58], [0, -58], [90, -58], [90, 58]],
+  4: [[0, 76], [-94, 0], [0, -52], [94, 0]],
+  5: [[0, 86], [-132, 12], [-46, -54], [46, -54], [132, 12]],
+  6: [[0, 58], [-90, 58], [-90, -56], [0, -56], [90, -56], [90, 58]],
 };
 
 interface Props {
@@ -38,36 +38,33 @@ interface Flight {
   count: number;
 }
 
-function permutations<T>(arr: T[]): T[][] {
-  if (arr.length <= 1) return [arr];
-  return arr.flatMap((x, i) =>
-    permutations([...arr.slice(0, i), ...arr.slice(i + 1)]).map((p) => [x, ...p]));
-}
-
 /**
- * Trump first, then alternate suit colors. Depends only on trump — never on
- * which suits happen to be in the hand — so the hand keeps a stable order
- * all round instead of reshuffling as suits run out.
+ * Trump first, then around the color wheel clubs→diamonds→spades→hearts so
+ * colors alternate. The wheel can run in either direction; pick the one
+ * whose VISIBLE suits (the suits actually held) alternate — a hand with no
+ * spades under diamonds trump reads D-C-H, not D-H-C. The direction is
+ * decided from `basis` (the full hand at the start of play), so the order
+ * never reshuffles mid-round as suits run out.
  */
-function suitOrder(trump: Suit | null): Suit[] {
-  let best: Suit[] = [...SUITS];
-  let bestScore = Infinity;
-  for (const perm of permutations([...SUITS])) {
-    if (trump && perm[0] !== trump) continue;
-    let sameColorTouches = 0;
-    for (let i = 1; i < perm.length; i++) {
-      if (isRed(perm[i]) === isRed(perm[i - 1])) sameColorTouches++;
+const SUIT_WHEEL: Suit[] = ['C', 'D', 'S', 'H'];
+function suitOrder(trump: Suit | null, basis: Card[]): Suit[] {
+  const start = SUIT_WHEEL.indexOf(trump ?? 'S');
+  const forward = SUIT_WHEEL.map((_, i) => SUIT_WHEEL[(start + i) % 4]);
+  const backward = SUIT_WHEEL.map((_, i) => SUIT_WHEEL[(start - i + 4) % 4]);
+  const present = new Set(basis.map((c) => c.suit));
+  const touches = (order: Suit[]) => {
+    const visible = order.filter((s) => present.has(s));
+    let t = 0;
+    for (let i = 1; i < visible.length; i++) {
+      if (isRed(visible[i]) === isRed(visible[i - 1])) t++;
     }
-    if (sameColorTouches < bestScore) {
-      bestScore = sameColorTouches;
-      best = perm;
-    }
-  }
-  return best;
+    return t;
+  };
+  return touches(backward) < touches(forward) ? backward : forward;
 }
 
-function sortHand(hand: Card[], trump: Suit | null): Card[] {
-  const order = suitOrder(trump);
+function sortHand(hand: Card[], trump: Suit | null, basis: Card[] = hand): Card[] {
+  const order = suitOrder(trump, basis.length > 0 ? basis : hand);
   return [...hand].sort((a, b) => {
     const sa = order.indexOf(a.suit);
     const sb = order.indexOf(b.suit);
@@ -100,6 +97,58 @@ function isActing(state: GameState, seat: number, partner: number | null): boole
   }
 }
 
+/**
+ * Jester watermark woven into the felt until trump is named — one connected
+ * figure: a three-point belled cap with ridge lines, headband, grinning face,
+ * and a ruff collar tucked under the chin, all in the cloth's ghost-white.
+ */
+function JokerMark() {
+  const ink = 'rgba(255, 255, 255, 0.055)';
+  const glint = 'rgba(255, 255, 255, 0.09)';
+  const shade = 'rgba(0, 40, 10, 0.12)';
+  return (
+    <svg className="felt-joker" viewBox="0 0 140 150" aria-hidden="true">
+      {/* cap: three points rising from the headband as one piece */}
+      <path
+        d="M52 76
+           C38 70 28 58 22 42
+           C21 38 24 34 28 37
+           C36 44 44 52 50 60
+           C50 44 56 26 67 13
+           C69 10 71 10 73 13
+           C84 26 90 44 90 60
+           C96 52 104 44 112 37
+           C116 34 119 38 118 42
+           C112 58 102 70 88 76
+           Q70 84 52 76 Z"
+        fill={ink}
+      />
+      {/* ridge lines marking the three points */}
+      <path
+        d="M58 70 C48 60 38 50 29 40 M70 74 C70 52 70 32 70 16 M82 70 C92 60 102 50 111 40"
+        fill="none" stroke={shade} strokeWidth="1.6"
+      />
+      {/* bells */}
+      <circle cx="26" cy="39" r="5" fill={glint} />
+      <circle cx="70" cy="12" r="5" fill={glint} />
+      <circle cx="114" cy="39" r="5" fill={glint} />
+      {/* headband */}
+      <path d="M50 78 Q70 70 90 78 L90 84 Q70 76 50 84 Z" fill={glint} />
+      {/* face, tucked under the band */}
+      <ellipse cx="70" cy="97" rx="16.5" ry="15.5" fill={ink} />
+      <circle cx="63.5" cy="94" r="2" fill={shade} />
+      <circle cx="76.5" cy="94" r="2" fill={shade} />
+      <path d="M61 102 Q70 109 79 102" fill="none" stroke={shade} strokeWidth="2.2" strokeLinecap="round" />
+      {/* ruff collar under the chin, with a hanging bell */}
+      <path
+        d="M44 116 Q70 106 96 116 L88 128 L79 118 L70 130 L61 118 L52 128 Z"
+        fill={glint}
+      />
+      <circle cx="70" cy="135" r="3.4" fill={ink} />
+    </svg>
+  );
+}
+
 /** Face-down cards strewn about, one per trick taken. */
 function Strewn({ count }: { count: number }) {
   const n = Math.min(count, 9);
@@ -120,6 +169,8 @@ export function GameTable({ state, names, dispatch }: Props) {
   const [selection, setSelection] = useState<string[]>([]);
   const [collect, setCollect] = useState(false);
   const [ackReturn, setAckReturn] = useState(false);
+  const [kittyShow, setKittyShow] = useState(false);
+  const prevForKitty = useRef(state.phase);
   const [flights, setFlights] = useState<Flight[]>([]);
   const prevPhase = useRef(state.phase);
   const flightKey = useRef(0);
@@ -128,6 +179,18 @@ export function GameTable({ state, names, dispatch }: Props) {
   useEffect(() => {
     if (state.phase !== 'meld') setAckReturn(false);
   }, [state.phase, state.handNumber]);
+
+  // Flip the kitty face-up for everyone when the auction ends.
+  useEffect(() => {
+    const prev = prevForKitty.current;
+    prevForKitty.current = state.phase;
+    if (prev === 'bidding' && state.phase === 'trump' && mode.kittySize > 0) {
+      setKittyShow(true);
+      const t = setTimeout(() => setKittyShow(false), 2400);
+      return () => clearTimeout(t);
+    }
+    if (state.phase === 'bidding') setKittyShow(false);
+  }, [state.phase, mode.kittySize]);
 
   // Trick pickup: let the completed trick sit in the middle, then sweep it to the winner.
   useEffect(() => {
@@ -182,7 +245,10 @@ export function GameTable({ state, names, dispatch }: Props) {
   const legalIds = new Set(legal.map((c) => c.id));
 
   const isReview = state.phase === 'handReview';
-  const hand = sortHand((isReview ? state.playHands[0] : state.hands[0]) ?? [], state.trump);
+  // Suit-order direction is anchored to the full hand at the start of play,
+  // so the display never reshuffles as suits run out mid-round.
+  const orderBasis = state.playHands[0]?.length ? state.playHands[0] : state.hands[0] ?? [];
+  const hand = sortHand((isReview ? state.playHands[0] : state.hands[0]) ?? [], state.trump, orderBasis);
   const humanActive = isActing(state, 0, partner) || humanTurnToPlay;
   // Partner won the bid and returned cards: show those first, meld after "OK".
   const returnPending =
@@ -219,13 +285,19 @@ export function GameTable({ state, names, dispatch }: Props) {
     const m = state.melds[seat];
     if (!m) return [];
     const idSet = new Set(m.cardIds);
-    return sortHand(state.hands[seat].filter((c) => idSet.has(c.id)), state.trump);
+    return sortHand(
+      state.hands[seat].filter((c) => idSet.has(c.id)),
+      state.trump,
+      state.playHands[seat] ?? [],
+    );
   };
 
   const statusText = (() => {
     switch (state.phase) {
       case 'trump':
-        return state.bidWinner === 0 ? 'Name trump.' : `${names[state.bidWinner]} is naming trump…`;
+        return state.bidWinner === 0
+          ? `You take the bid at ${state.highBid}. Name trump.`
+          : `${names[state.bidWinner]} takes the bid at ${state.highBid} and is naming trump…`;
       case 'discard':
         return state.bidWinner === 0 ? '' : `${names[state.bidWinner]} is burying the kitty…`;
       case 'pass1':
@@ -246,7 +318,8 @@ export function GameTable({ state, names, dispatch }: Props) {
 
   return (
     <div className="table-wrap">
-      <div className="felt">
+      <div className="felt" data-mark={state.trump ? SUIT_SYMBOL[state.trump] : ''}>
+        {!state.trump && <JokerMark />}
         {/* Scoreboard */}
         <div className="board">
           <div className="board-head">
@@ -277,7 +350,12 @@ export function GameTable({ state, names, dispatch }: Props) {
         {/* Opponent seats */}
         {positions.map(([x, y], seat) => seat !== 0 && (
           <div key={seat} className="seat" style={{ left: `${x}%`, top: `${y}%` }}>
-            <div className={`avatar ${isActing(state, seat, partner) ? 'avatar-active' : ''} ${state.phase === 'bidding' && state.passed[seat] ? 'avatar-passed' : ''}`}
+            <div className={[
+              'avatar',
+              isActing(state, seat, partner) ? 'avatar-active' : '',
+              state.phase === 'bidding' && state.passed[seat] ? 'avatar-passed' : '',
+              state.bidWinner === seat && state.phase !== 'bidding' && state.phase !== 'gameOver' ? 'avatar-bid' : '',
+            ].filter(Boolean).join(' ')}
               style={{ ['--team' as string]: TEAM_COLORS[mode.teams[seat]] }}>
               {names[seat][0]}
               {state.dealer === seat && <span className="chip chip-dealer">D</span>}
@@ -303,12 +381,16 @@ export function GameTable({ state, names, dispatch }: Props) {
           </div>
         ))}
 
-        {/* Meld laid out on the table */}
+        {/* Meld laid out on the table. Six-handed, the three top seats sit so
+            close that centered rows collide — spread the side melds outward
+            and drop the middle one toward the table center. */}
         {meldVisible && positions.map(([sx, sy], seat) => {
           const cards = meldCardsFor(seat);
           if (cards.length === 0) return null;
-          const mx = sx + (50 - sx) * 0.42;
-          const my = sy + (44 - sy) * (seat === 0 ? 0.4 : 0.72);
+          const spread = mode.players === 6 ? 0.12 : 0.42;
+          const mx = sx + (50 - sx) * spread;
+          const deep = mode.players === 6 && seat === 3 ? 1.05 : 0.72;
+          const my = sy + (44 - sy) * (seat === 0 ? 0.4 : deep);
           return (
             <div key={`meld-${seat}`} className="meld-row" style={{ left: `${mx}%`, top: `${my}%` }}>
               <span className="meld-row-badge">{state.melds[seat]!.total}</span>
@@ -324,13 +406,15 @@ export function GameTable({ state, names, dispatch }: Props) {
             const [ox, oy] = TRICK_OFFSET[mode.players][p.seat];
             const doCollect = isTrickEnd && collect;
             const [wx, wy] = doCollect ? positions[state.trickWinner] : [0, 0];
+            const leading = (state.phase === 'play' || isTrickEnd) &&
+              i === winningIndex(state.trick, state.trump!);
             return (
               <div
                 key={p.card.id}
                 className={[
                   'trick-card',
                   doCollect ? 'trick-collect' : '',
-                  isTrickEnd && p.seat === state.trickWinner ? 'trick-winner' : '',
+                  leading ? 'trick-leading' : '',
                 ].filter(Boolean).join(' ')}
                 style={{
                   left: doCollect ? `${wx}%` : `calc(50% + ${ox}px)`,
@@ -369,6 +453,16 @@ export function GameTable({ state, names, dispatch }: Props) {
           )}
         </div>
 
+        {/* The kitty, flipped face-up for everyone before the winner takes it */}
+        {kittyShow && state.kitty.length > 0 && (
+          <div className="kitty-reveal">
+            <div className="received-label">{names[state.bidWinner]} takes the kitty</div>
+            <div className="received-cards">
+              {state.kitty.map((c) => <CardView key={c.id} card={c} size="mid" />)}
+            </div>
+          </div>
+        )}
+
         {/* Cards the human just received from a pass */}
         {state.passBuffer.length > 0 && state.phase === 'pass2' && state.bidWinner === 0 && (
           <div className="received-row">
@@ -397,7 +491,7 @@ export function GameTable({ state, names, dispatch }: Props) {
           if (seat === 0) return null;
           const cards = sortHand(state.playHands[seat] ?? [], state.trump);
           if (cards.length === 0) return null;
-          const rx = sx + (50 - sx) * 0.52;
+          const rx = sx + (50 - sx) * (mode.players === 6 ? 0.2 : 0.52);
           const ry = sy + (47 - sy) * 0.6;
           return (
             <div key={`review-${seat}`} className="review-row" style={{ left: `${rx}%`, top: `${ry}%` }}>
@@ -481,7 +575,11 @@ export function GameTable({ state, names, dispatch }: Props) {
       {/* Human hand */}
       <div className="hand-row">
         <div className="hand-side">
-          <div className={`avatar avatar-you ${humanActive ? 'avatar-active' : ''}`}
+          <div className={[
+            'avatar avatar-you',
+            humanActive ? 'avatar-active' : '',
+            state.bidWinner === 0 && state.phase !== 'bidding' && state.phase !== 'gameOver' ? 'avatar-bid' : '',
+          ].filter(Boolean).join(' ')}
             style={{ ['--team' as string]: TEAM_COLORS[mode.teams[0]] }}>
             You
             {state.dealer === 0 && <span className="chip chip-dealer">D</span>}
@@ -511,11 +609,10 @@ export function GameTable({ state, names, dispatch }: Props) {
             </div>
           ))}
         </div>
-        {trickCount(mode.teams[0]) > 0 && (
-          <div className="hand-side">
-            <Strewn count={trickCount(mode.teams[0])} />
-          </div>
-        )}
+        {/* Always rendered so the hand row never re-centers when the first trick lands */}
+        <div className="hand-side">
+          <Strewn count={trickCount(mode.teams[0])} />
+        </div>
       </div>
     </div>
   );

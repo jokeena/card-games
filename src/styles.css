@@ -87,10 +87,11 @@ body {
 }
 .segmented {
   display: inline-flex;
-  background: #fff;
-  border: 1px solid #d5cfba;
+  background: linear-gradient(170deg, #fdfbf4, #f3eee0);
+  border: 1px solid #d8d2bd;
   border-radius: 10px;
   overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(120, 100, 55, 0.08);
 }
 .segmented button {
   background: none;
@@ -101,29 +102,137 @@ body {
   cursor: pointer;
   transition: all 0.15s;
 }
+.segmented button:hover:not(.seg-active) { color: var(--navy-deep); }
 .segmented .seg-active {
-  background: var(--navy);
-  color: #fff;
+  background: radial-gradient(ellipse at 50% 30%, #4b9755, #327440);
+  color: #f7f3e2;
   font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0, 40, 10, 0.5);
+  box-shadow: inset 0 0 8px rgba(0, 40, 10, 0.35);
 }
-.mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+/* Mode buttons: ivory linen with a gold-engraved double rim */
 .mode-card {
-  background: linear-gradient(160deg, #ecf4ec, #ddecdf);
-  border: 1px solid #c9d6c6;
+  position: relative;
+  background:
+    repeating-linear-gradient(45deg, rgba(184, 145, 42, 0.05) 0 1px, transparent 1px 7px),
+    repeating-linear-gradient(-45deg, rgba(184, 145, 42, 0.04) 0 1px, transparent 1px 7px),
+    linear-gradient(170deg, #fffef8, #f6f0dd);
+  border: 1px solid #d6c187;
   border-radius: 12px;
-  padding: 18px 12px;
-  color: var(--ink);
-  font-size: 1rem;
+  padding: 18px 12px 20px;
+  color: var(--navy-deep);
+  font-family: var(--serif);
+  font-size: 1.06rem;
   font-weight: 600;
+  letter-spacing: 0.8px;
   cursor: pointer;
-  transition: all 0.18s ease;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  box-shadow:
+    inset 0 1px 0 #fff,
+    inset 0 -10px 18px rgba(184, 145, 42, 0.07),
+    0 2px 7px rgba(130, 105, 45, 0.16);
+}
+.mode-card::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 8px;
+  border: 1px solid rgba(184, 145, 42, 0.45);
+  pointer-events: none;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+.mode-card::before {
+  content: '◆';
+  position: absolute;
+  left: 50%; bottom: 6px;
+  transform: translateX(-50%);
+  font-size: 0.44rem;
+  color: rgba(184, 145, 42, 0.6);
+  pointer-events: none;
+  transition: color 0.18s;
 }
 .mode-card:hover {
-  border-color: var(--navy);
-  background: linear-gradient(160deg, #f2f8f2, #e6f1e8);
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(60, 80, 60, 0.22);
+  border-color: var(--gold-deep);
+  box-shadow:
+    inset 0 1px 0 #fff,
+    inset 0 -10px 18px rgba(184, 145, 42, 0.09),
+    0 10px 24px rgba(130, 105, 45, 0.26);
 }
+.mode-card:hover::after {
+  border-color: rgba(184, 145, 42, 0.85);
+  box-shadow: 0 0 10px rgba(212, 175, 55, 0.3);
+}
+.mode-card:hover::before { color: rgba(184, 145, 42, 0.95); }
+/* Resume banner: the table you left, waiting — a strip of felt */
+.resume-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  background: radial-gradient(ellipse at 50% 28%, #4e9c58, #35773f 68%, #2a6435);
+  border: 1px solid #24512c;
+  border-radius: 12px;
+  padding: 13px 12px 12px;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+  box-shadow:
+    inset 0 0 14px rgba(0, 40, 10, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 2px 7px rgba(70, 58, 25, 0.28);
+}
+.resume-card::after {
+  content: '';
+  position: absolute;
+  inset: 4px;
+  border-radius: 8px;
+  border: 1px solid rgba(212, 175, 55, 0.55);
+  pointer-events: none;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+.resume-card:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.08);
+  box-shadow:
+    inset 0 0 14px rgba(0, 40, 10, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 10px 24px rgba(60, 80, 50, 0.35);
+}
+.resume-card:hover::after {
+  border-color: rgba(235, 202, 96, 0.9);
+  box-shadow: 0 0 10px rgba(212, 175, 55, 0.25);
+}
+.resume-title {
+  font-family: var(--serif);
+  font-size: 1.02rem;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  color: #f7f3e2;
+  text-shadow: 0 1px 3px rgba(0, 40, 10, 0.55);
+}
+.resume-scores {
+  font-size: 0.8rem;
+  color: rgba(244, 240, 222, 0.85);
+  font-variant-numeric: tabular-nums;
+}
+.menu-stats {
+  margin-top: 26px;
+  background: none;
+  border: none;
+  color: var(--ink-dim);
+  font-size: 0.82rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+  padding: 2px 1px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.menu-stats:hover { color: var(--navy-deep); border-bottom-color: var(--gold-deep); }
+.stats-table { font-size: 0.85rem; }
+.stats-table th, .stats-table td { padding: 7px 10px; }
 
 /* ================= Top bar ================= */
 .top-bar {
@@ -216,11 +325,11 @@ body {
     0 0 0 12px rgba(60, 44, 16, 0.5),
     0 14px 36px rgba(90, 70, 30, 0.35);
 }
-/* Center emblem woven into the cloth */
+/* Center emblem woven into the cloth — shows the trump suit once named */
 .felt::before {
-  content: '♠';
+  content: attr(data-mark);
   position: absolute;
-  left: 50%; top: 46%;
+  left: 50%; top: 51%;
   transform: translate(-50%, -50%);
   font-size: min(24vh, 15vw);
   line-height: 1;
@@ -235,6 +344,14 @@ body {
   border-radius: inherit;
   border: 2px solid rgba(255, 255, 255, 0.14);
   box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.04);
+  pointer-events: none;
+}
+/* Jester watermark shown until trump is named */
+.felt-joker {
+  position: absolute;
+  left: 50%; top: 51%;
+  transform: translate(-50%, -50%);
+  height: min(26vh, 17vw);
   pointer-events: none;
 }
 
@@ -334,6 +451,28 @@ body {
   animation: pulse 1.4s ease-in-out infinite;
 }
 .avatar-passed { filter: grayscale(0.75) brightness(0.85) opacity(0.75); }
+/* Bid winner wears a gold ring for the rest of the hand */
+.avatar-bid {
+  box-shadow:
+    0 0 0 3px var(--gold),
+    0 0 14px rgba(212, 175, 55, 0.5),
+    0 4px 12px rgba(0, 30, 10, 0.35);
+}
+.avatar-bid.avatar-active { animation: pulseBid 1.4s ease-in-out infinite; }
+@keyframes pulseBid {
+  0%, 100% {
+    box-shadow:
+      0 0 0 3px var(--gold),
+      0 0 0 0 rgba(255, 255, 255, 0.85),
+      0 4px 12px rgba(0, 30, 10, 0.35);
+  }
+  55% {
+    box-shadow:
+      0 0 0 3px var(--gold),
+      0 0 0 10px rgba(255, 255, 255, 0),
+      0 4px 12px rgba(0, 30, 10, 0.35);
+  }
+}
 @keyframes pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.85), 0 4px 12px rgba(0,30,10,0.35); }
   55% { box-shadow: 0 0 0 10px rgba(255, 255, 255, 0), 0 4px 12px rgba(0,30,10,0.35); }
@@ -362,7 +501,7 @@ body {
   color: #fff;
 }
 .seat-name {
-  margin-top: 6px;
+  margin-top: 1px;
   font-size: 1.08rem;
   font-weight: 700;
   letter-spacing: 0.3px;
@@ -372,7 +511,7 @@ body {
 .seat-fan {
   display: flex;
   justify-content: center;
-  margin-top: 6px;
+  margin-top: 1px;
   height: 62px;
 }
 .fan-back {
@@ -387,9 +526,13 @@ body {
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45), 0 0 0 1px #c9d2e388;
   transform-origin: 50% 120%;
 }
+/* Bubbles hang below the seat without taking layout space — a bid appearing
+   or vanishing must never shift the avatar or the fan. */
 .seat-bubble {
-  display: inline-block;
-  margin-top: 4px;
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
   background: #fdfcf7;
   color: var(--navy-deep);
   border: 1.5px solid var(--navy);
@@ -398,10 +541,21 @@ body {
   border-radius: 12px;
   padding: 2px 12px;
   min-height: 1.2em;
+  white-space: nowrap;
   box-shadow: 0 2px 6px rgba(0, 30, 10, 0.25);
-  animation: bubbleIn 0.25s ease-out;
+  animation: bubbleInAbs 0.25s ease-out;
+}
+@keyframes bubbleInAbs {
+  from { transform: translateX(-50%) scale(0.6); opacity: 0; }
+  to { transform: translateX(-50%) scale(1); opacity: 1; }
 }
 .seat-bubble:empty { visibility: hidden; }
+/* The human's bubble sits above their avatar, out of the cards' way */
+.hand-side { position: relative; }
+.hand-side .seat-bubble {
+  top: auto;
+  bottom: calc(100% - 2px);
+}
 .bubble-pass {
   background: #fdfcf7;
   color: #b03a2e;
@@ -445,7 +599,6 @@ body {
   animation: fadeIn 0.35s ease-out;
 }
 .meld-row .card { margin: 0 -19px; }
-.meld-row .card:hover { z-index: 3; }
 .meld-row-badge {
   position: absolute;
   top: -13px; right: -9px;
@@ -483,8 +636,11 @@ body {
   }
 }
 .trick-collect { opacity: 0; }
-.trick-winner .card {
-  box-shadow: 0 0 18px 4px rgba(240, 201, 78, 0.8);
+/* Card currently winning the trick — follows it through the pickup */
+.trick-leading { z-index: 9; }
+.trick-leading .card {
+  outline: 2px solid #232936;
+  outline-offset: 1px;
 }
 .flight-card {
   position: absolute;
@@ -546,7 +702,20 @@ body {
   box-shadow: 0 3px 10px rgba(0, 30, 10, 0.25);
 }
 .received-cards { display: flex; gap: 8px; }
+/* Kitty flipped up for the table when the auction ends */
+.kitty-reveal {
+  position: absolute;
+  left: 50%; top: 34%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  z-index: 14;
+  animation: fadeIn 0.3s ease-out;
+}
 .received-ack {
+  top: 62%;
   z-index: 18;
   background: linear-gradient(170deg, #fbf9f1, #efeadb);
   border: 1px solid var(--panel-edge);
@@ -780,14 +949,14 @@ body {
 .pip {
   position: absolute;
   transform: translate(-50%, -50%);
-  font-size: 1.08rem;
+  font-size: 0.95rem;
   line-height: 1;
 }
 .pip-flip { transform: translate(-50%, -50%) rotate(180deg); }
 .card-mid .card-pips { inset: 7px 11px; }
-.card-mid .pip { font-size: 0.86rem; }
+.card-mid .pip { font-size: 0.77rem; }
 .card-small .card-pips { inset: 6px 10px; }
-.card-small .pip { font-size: 0.74rem; }
+.card-small .pip { font-size: 0.66rem; }
 
 /* Court cards (K, Q, J): double-ended SVG figure art */
 .card-court {
@@ -807,13 +976,15 @@ body {
 }
 
 /* ================= Human hand ================= */
+/* Fixed height: the felt above is sized from what's left of the viewport,
+   so this row must never breathe — not even 2px — as the hand empties. */
 .hand-row {
   display: flex;
   align-items: flex-end;
   justify-content: center;
   gap: 24px;
   padding: 4px 16px 14px;
-  min-height: 154px;
+  height: 156px;
 }
 .hand-side {
   display: flex;

@@ -2,7 +2,7 @@ import { GameAction, GameState } from '../engine/game';
 import { computeMeld } from '../engine/meld';
 import { partnerOf } from '../engine/modes';
 import { legalPlays, winningIndex } from '../engine/tricks';
-import { Card, isCounter, RANK_POWER, Suit, SUITS } from '../engine/types';
+import { Card, isCounter, RANK_POWER, RANKS, Suit, SUITS } from '../engine/types';
 
 export type Difficulty = 'easy' | 'medium' | 'hard';
 
@@ -50,7 +50,9 @@ function evaluateSuits(state: GameState, seat: number): SuitEval[] {
       // Short hands meld less — expect roughly a point of meld per three cards.
       const partnerMeldExp = mode.handSize / 3;
       ceiling = meld + partnerMeldExp + teamBaseline + 1.5 + edge;
-      if (mode.passCount > 0) ceiling += 3.5; // partner ships trump and aces
+      // Passing is worth a lot: partner ships trump and aces, the exchange
+      // often completes a run, and the consolidated hand controls the play.
+      if (mode.passCount > 0) ceiling += 6.5;
     }
     ceiling -= shortTrumpPenalty;
     return { suit, meld, trumpLen, ceiling };
@@ -66,10 +68,35 @@ function maxBidFor(state: GameState, seat: number, difficulty: Difficulty): numb
 }
 
 function pickBidAction(state: GameState, seat: number, difficulty: Difficulty): GameAction {
-  const max = maxBidFor(state, seat, difficulty);
+  const partner = partnerOf(state.mode, seat);
   const min = state.highSeat === -1 ? state.mode.bidStart : state.highBid + 1;
+
+  // Partner holds the high bid: only take the contract off them with an
+  // easy-make hand — clearing the price by a point isn't a reason to bid.
+  if (partner !== null && state.highSeat === partner) {
+    const max = maxBidFor(state, seat, difficulty);
+    if (min <= max - 3) return { type: 'BID', seat, amount: min };
+    return { type: 'PASS_BID', seat };
+  }
+
+  // A partner who has voluntarily bid is promising real help.
+  const partnerSupport =
+    partner !== null && difficulty !== 'easy' && state.bids[partner] !== null ? 2 : 0;
+  const max = maxBidFor(state, seat, difficulty) + partnerSupport;
   // Jump bids only raise the bot's own make-threshold — always bid the minimum.
   if (min <= max) return { type: 'BID', seat, amount: min };
+  // In passing modes a contract is strong (partner consolidates the winner's
+  // hand), so hard bots don't hand one to an opponent cheap: with a tolerable
+  // hand they push an opposing high bidder toward a fair price before dropping
+  // out, accepting the risk of getting stuck. In other modes contracts are
+  // fragile and bidding up just eats sets. (Partner holding the high bid
+  // already returned above, so any high bidder here is an opponent.)
+  if (difficulty === 'hard' && state.mode.passCount > 0 && state.highSeat !== -1) {
+    const fairPrice = state.mode.bidStart + 7;
+    if (min <= fairPrice && max >= min - 4) {
+      return { type: 'BID', seat, amount: min };
+    }
+  }
   return { type: 'PASS_BID', seat };
 }
 
@@ -123,6 +150,101 @@ function passValue(card: Card, trump: Suit): number {
   return score;
 }
 
+/**
+ * What the partner ships to the bid winner, in table priority order:
+ * distinct non-9 trump ranks first, then off-trump aces (one per suit before
+ * a second of the same suit), the off-trump pinochle leg when trump is
+ * spades or diamonds, duplicate trump, trump 9s, then whatever's best left.
+ * A non-trump ace always outranks a 9 of trump.
+ */
+export function pickPassToWinner(hand: Card[], trump: Suit, count: number): string[] {
+  const chosen: Card[] = [];
+  const used = new Set<string>();
+  const take = (cards: Card[]) => {
+    for (const c of cards) {
+      if (chosen.length >= count) return;
+      if (!used.has(c.id)) {
+        used.add(c.id);
+        chosen.push(c);
+      }
+    }
+  };
+
+  const trumps = hand.filter((c) => c.suit === trump)
+    .sort((a, b) => RANK_POWER[b.rank] - RANK_POWER[a.rank]);
+  const uniqueTrump: Card[] = [];
+  const dupTrump: Card[] = [];
+  const seenRank = new Set<string>();
+  for (const c of trumps) {
+    if (c.rank === '9') continue;
+    if (seenRank.has(c.rank)) dupTrump.push(c);
+    else { seenRank.add(c.rank); uniqueTrump.push(c); }
+  }
+  const trumpNines = trumps.filter((c) => c.rank === '9');
+
+  const firstAces: Card[] = [];
+  const dupAces: Card[] = [];
+  const aceSuits = new Set<Suit>();
+  for (const a of hand.filter((c) => c.rank === 'A' && c.suit !== trump)) {
+    if (aceSuits.has(a.suit)) dupAces.push(a);
+    else { aceSuits.add(a.suit); firstAces.push(a); }
+  }
+
+  const leg = trump === 'S' ? { suit: 'D' as Suit, rank: 'J' }
+    : trump === 'D' ? { suit: 'S' as Suit, rank: 'Q' } : null;
+  const legs = leg ? hand.filter((c) => c.suit === leg.suit && c.rank === leg.rank) : [];
+
+  take(uniqueTrump);
+  take(firstAces);
+  take(legs);
+  take(dupAces);
+  take(dupTrump);
+  take(trumpNines);
+  take([...hand].filter((c) => !used.has(c.id))
+    .sort((a, b) => passValue(b, trump) - passValue(a, trump)));
+  return chosen.map((c) => c.id);
+}
+
+/**
+ * The bid winner's return pass: try every discard set and keep the hand with
+ * the most meld and playing strength, preferring to ship meld-makers
+ * (kings/queens) to the partner and to come out two or three suited.
+ */
+function pickReturn(hand: Card[], trump: Suit, count: number): string[] {
+  let best: Card[] = hand.slice(0, count);
+  let bestScore = -Infinity;
+  const n = hand.length;
+  const idx = Array.from({ length: count }, (_, i) => i);
+
+  while (true) {
+    const discard = idx.map((i) => hand[i]);
+    const discardIds = new Set(discard.map((c) => c.id));
+    const kept = hand.filter((c) => !discardIds.has(c.id));
+
+    let score = computeMeld(kept, trump).total * 3;
+    for (const c of kept) {
+      if (c.suit === trump) score += 2;
+      if (c.rank === 'A') score += 2.5;
+      score += RANK_POWER[c.rank] * 0.3;
+    }
+    score += (4 - new Set(kept.map((c) => c.suit)).size) * 2.5;
+    for (const c of discard) {
+      if (c.rank === 'K' || c.rank === 'Q') score += 1.2; // meld makers for partner
+      if (c.suit === trump) score -= 6;
+      if (c.rank === 'A') score -= 4;
+    }
+    if (score > bestScore) { bestScore = score; best = discard; }
+
+    // next combination
+    let i = count - 1;
+    while (i >= 0 && idx[i] === n - count + i) i--;
+    if (i < 0) break;
+    idx[i]++;
+    for (let j = i + 1; j < count; j++) idx[j] = idx[j - 1] + 1;
+  }
+  return best.map((c) => c.id);
+}
+
 function pickPlay(state: GameState, seat: number, difficulty: Difficulty): Card {
   const hand = state.hands[seat];
   const trump = state.trump!;
@@ -150,14 +272,31 @@ function pickPlay(state: GameState, seat: number, difficulty: Difficulty): Card 
       state.captured.forEach((pile) => pile.forEach(note));
       hand.forEach(note);
     }
-    // The bidding side pulls trump before cashing side aces: the leader's
-    // trump ace is boss (ties lose), and stripping trump protects the winners.
+    const myTrumps = legal.filter((c) => c.suit === trump)
+      .sort((a, b) => RANK_POWER[b.rank] - RANK_POWER[a.rank]);
+    const trumpIdx = SUITS.indexOf(trump);
+    const topTrumpIsBoss = myTrumps.length > 0 && (myTrumps[0].rank === 'A' ||
+      (difficulty === 'hard' && (seen.get(`${trump}A`) ?? 0) === 2));
+
+    // The bidding side pulls trump before cashing side aces — but only while
+    // pulling still buys something (points live in the late tricks, so keep
+    // some trump home), and never by donating a counter to an outstanding ace.
     if (iAmBidTeam) {
-      const trumps = legal.filter((c) => c.suit === trump)
-        .sort((a, b) => RANK_POWER[b.rank] - RANK_POWER[a.rank]);
+      const oppsWithTrump = Array.from({ length: mode.players }, (_, s) => s)
+        .filter((s) => s !== seat && !isFriendly(s) && !state.voids[s]?.[trumpIdx]).length;
+      // Hard counts the cards: how many trumps sit outside my hand and the piles.
+      const outstanding = difficulty === 'hard'
+        ? 12 - RANKS.reduce((sum, r) => sum + (seen.get(`${trump}${r}`) ?? 0), 0)
+        : 99;
       const pullFrom = difficulty === 'hard' ? 3 : 4;
-      if (trumps.length >= pullFrom && trumps[0].rank === 'A') return trumps[0];
-      if (trumps.length >= 4 && RANK_POWER[trumps[0].rank] >= 4) return trumps[0];
+      // Trump concentrated in one hand isn't worth digging out.
+      const worthPulling = oppsWithTrump >= 2 ? outstanding > 2 : outstanding > 3;
+      if (myTrumps.length >= pullFrom && oppsWithTrump > 0 && worthPulling) {
+        if (topTrumpIsBoss) return myTrumps[0];
+        // Not boss: flush the ace with a cheap trump instead of feeding it a 10.
+        const low = myTrumps[myTrumps.length - 1];
+        if (myTrumps.length >= 4 && !isCounter(low)) return low;
+      }
     }
     // Cash aces — defenders especially, before the bidder strips their trump.
     const aces = legal.filter((c) => c.rank === 'A' && c.suit !== trump);
@@ -165,6 +304,11 @@ function pickPlay(state: GameState, seat: number, difficulty: Difficulty): Card 
       const otherAceOut =
         difficulty !== 'hard' || (seen.get(`${ace.suit}A`) ?? 0) < 2;
       if (!otherAceOut || difficulty === 'medium' || Math.random() < 0.9) return ace;
+    }
+    // A short trump holding topped by the boss gets cashed before the bidder
+    // draws it out — an unprotected trump ace (or boss 10) mustn't die in hand.
+    if (!iAmBidTeam && myTrumps.length > 0 && myTrumps.length <= 2 && topTrumpIsBoss) {
+      return myTrumps[0];
     }
     // Otherwise lead low junk (never open a trump for the bidder).
     const junk = byPowerAsc.filter((c) => !isCounter(c) && c.suit !== trump);
@@ -214,9 +358,25 @@ function pickPlay(state: GameState, seat: number, difficulty: Difficulty): Card 
     return nonWinners.sort((a, b) => RANK_POWER[a.rank] - RANK_POWER[b.rank])[0];
   }
 
-  // The bid side has the trick (or it's not safe): dump the least valuable card.
-  const junk = [...nonWinners]
-    .sort((a, b) => (Number(isCounter(a)) - Number(isCounter(b))) || (RANK_POWER[a.rank] - RANK_POWER[b.rank]));
+  // The bid side has the trick (or it's not safe): dump the least valuable
+  // card. Within a suit, strictly lowest first — following an ace with your
+  // own ace when you hold the 10 hands the opponents a whole trick. Across
+  // suits, prefer short or hopeless suits, and don't strip a small card
+  // (9/J/Q only — never a counter) that lets an ace duck the other ace later.
+  const suitLen = (s: Suit) => hand.filter((c) => c.suit === s).length;
+  const guardsAce = (c: Card) =>
+    !isCounter(c) &&
+    hand.some((x) => x.suit === c.suit && x.rank === 'A') &&
+    hand.filter((x) => x.suit === c.suit && x.rank !== 'A').length <= 2;
+  const lowestPerSuit = new Map<Suit, Card>();
+  for (const c of nonWinners) {
+    const cur = lowestPerSuit.get(c.suit);
+    if (!cur || RANK_POWER[c.rank] < RANK_POWER[cur.rank]) lowestPerSuit.set(c.suit, c);
+  }
+  const junk = [...lowestPerSuit.values()].sort((a, b) =>
+    (Number(isCounter(a)) - Number(isCounter(b))) ||
+    (Number(guardsAce(a)) - Number(guardsAce(b))) ||
+    ((suitLen(a.suit) * 3 + RANK_POWER[a.rank]) - (suitLen(b.suit) * 3 + RANK_POWER[b.rank])));
   return junk[0] ?? byPowerAsc[0];
 }
 
@@ -231,16 +391,10 @@ export function botAction(state: GameState, seat: number, difficulty: Difficulty
       return { type: 'NAME_TRUMP', seat, suit: evaluateSuits(state, seat)[0].suit };
     case 'discard':
       return { type: 'DISCARD', seat, cardIds: pickWorst(state.hands[seat], state.trump!, mode.kittySize, buryScore) };
-    case 'pass1': {
-      const hand = state.hands[seat];
-      const ids = [...hand]
-        .sort((a, b) => passValue(b, state.trump!) - passValue(a, state.trump!))
-        .slice(0, mode.passCount)
-        .map((c) => c.id);
-      return { type: 'PASS_CARDS', seat, cardIds: ids };
-    }
+    case 'pass1':
+      return { type: 'PASS_CARDS', seat, cardIds: pickPassToWinner(state.hands[seat], state.trump!, mode.passCount) };
     case 'pass2':
-      return { type: 'PASS_CARDS', seat, cardIds: pickWorst(state.hands[seat], state.trump!, mode.passCount) };
+      return { type: 'PASS_CARDS', seat, cardIds: pickReturn(state.hands[seat], state.trump!, mode.passCount) };
     case 'play':
       return { type: 'PLAY', seat, cardId: pickPlay(state, seat, difficulty).id };
     default:

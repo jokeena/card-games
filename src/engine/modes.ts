@@ -23,7 +23,7 @@ export const MODES: ModeConfig[] = [
     handSize: 15, kittySize: 3, bidStart: 15, stuck: 15, target: 120, passCount: 0,
   },
   {
-    id: 'p3', label: '3 Player · No Kitty', short: '3P',
+    id: 'p3', label: '3 Player', short: '3P',
     players: 3, teams: [0, 1, 2], teamCount: 3,
     handSize: 16, kittySize: 0, bidStart: 15, stuck: 15, target: 120, passCount: 0,
   },
@@ -33,7 +33,7 @@ export const MODES: ModeConfig[] = [
     handSize: 12, kittySize: 0, bidStart: 25, stuck: 25, target: 150, passCount: 4,
   },
   {
-    id: 'p4np', label: '4 Player · No Passing', short: '4P',
+    id: 'p4np', label: '4 Player', short: '4P',
     players: 4, teams: [0, 1, 0, 1], teamCount: 2,
     handSize: 12, kittySize: 0, bidStart: 21, stuck: 20, target: 150, passCount: 0,
   },
@@ -43,7 +43,7 @@ export const MODES: ModeConfig[] = [
     handSize: 9, kittySize: 3, bidStart: 15, stuck: 10, target: 100, passCount: 0,
   },
   {
-    id: 'p6', label: '6 Player · 3 Teams', short: '6P',
+    id: 'p6', label: '6 Player', short: '6P',
     players: 6, teams: [0, 1, 2, 0, 1, 2], teamCount: 3,
     handSize: 8, kittySize: 0, bidStart: 15, stuck: 10, target: 100, passCount: 0,
   },

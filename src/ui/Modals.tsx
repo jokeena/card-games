@@ -17,12 +17,17 @@ export function Modals({ state, names, onContinue, onNewGame }: Props) {
 
 function HandEndModal({ state, names, onContinue }: Pick<Props, 'state' | 'names' | 'onContinue'>) {
   const r = state.handResult!;
+  const isMe = state.bidWinner === 0;
+  const isPartner = !isMe && state.mode.teams[state.bidWinner] === state.mode.teams[0];
+  const title = r.made
+    ? (isMe ? 'You made the bid' : `${names[state.bidWinner]} made the bid`)
+    : isMe ? 'You went set'
+      : isPartner ? `${names[state.bidWinner]} went set`
+        : `${names[state.bidWinner]} was set`;
   return (
     <div className="modal-backdrop">
       <div className="modal">
-        <h2 className={r.made ? 'result-made' : 'result-set'}>
-          {r.made ? `Bid of ${r.bid} made!` : `Set! Bid of ${r.bid} missed.`}
-        </h2>
+        <h2 className={r.made ? 'result-made' : 'result-set'}>{title}</h2>
         <table className="result-table">
           <thead>
             <tr><th></th><th>Meld</th><th>Tricks</th><th>Hand</th><th>Score</th></tr>

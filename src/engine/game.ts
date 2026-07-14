@@ -2,7 +2,7 @@ import { dealHands } from './deck';
 import { computeMeld, MeldResult } from './meld';
 import { ModeConfig, partnerOf } from './modes';
 import { legalPlays, winningIndex, winsRemainingTricks } from './tricks';
-import { Card, isCounter, Played, Suit, SUIT_NAME } from './types';
+import { Card, isCounter, Played, Suit, SUITS, SUIT_NAME } from './types';
 
 export type Phase =
   | 'bidding'
@@ -58,6 +58,12 @@ export interface GameState {
   passBuffer: Card[];
   /** Each hand as it stood when play began (post-kitty, post-pass) — for the end-of-hand reveal. */
   playHands: Card[][];
+  /**
+   * Public knowledge: voids[seat][suitIndex] is true once everyone has seen
+   * that seat fail to follow the suit (SUITS order). Failing to trump when
+   * void also reveals a trump void. Bots may use this — a table would too.
+   */
+  voids: boolean[][];
 
   trick: Played[];
   trickWinner: number;
@@ -110,6 +116,7 @@ function freshHand(state: GameState, dealer: number): GameState {
     melds: Array(mode.players).fill(null),
     passBuffer: [],
     playHands: [],
+    voids: Array.from({ length: mode.players }, () => Array(4).fill(false)),
     trick: [],
     trickWinner: -1,
     tricksPlayed: 0,
@@ -142,6 +149,7 @@ export function newGame(mode: ModeConfig): GameState {
     melds: [],
     passBuffer: [],
     playHands: [],
+    voids: [],
     trick: [],
     trickWinner: -1,
     tricksPlayed: 0,
@@ -371,8 +379,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         i === action.seat ? h.filter((c) => c.id !== card.id) : h);
       const trick = [...state.trick, { seat: action.seat, card }];
 
+      let voids = state.voids;
+      if (state.trick.length > 0 && card.suit !== state.trick[0].card.suit) {
+        voids = state.voids.map((v) => [...v]);
+        voids[action.seat][SUITS.indexOf(state.trick[0].card.suit)] = true;
+        if (card.suit !== state.trump) voids[action.seat][SUITS.indexOf(state.trump!)] = true;
+      }
+
       if (trick.length < n) {
-        return { ...state, hands, trick, turn: (action.seat + 1) % n };
+        return { ...state, hands, trick, voids, turn: (action.seat + 1) % n };
       }
 
       const wi = winningIndex(trick, state.trump!);
@@ -387,6 +402,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         ...state,
         hands,
         trick,
+        voids,
         phase: 'trickEnd',
         trickWinner: winnerSeat,
         captured,
