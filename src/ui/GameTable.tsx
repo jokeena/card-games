@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GameAction, GameState } from '../engine/game';
 import { partnerOf } from '../engine/modes';
-import { legalPlays, winningIndex, winsRemainingTricks } from '../engine/tricks';
-import { Card, RANK_POWER, Suit, SUITS, SUIT_SYMBOL, isRed } from '../engine/types';
+import { legalPlays, winningIndex } from '../engine/tricks';
+import { Card, RANK_POWER, Suit, SUITS, SUIT_SYMBOL, isCounter, isRed } from '../engine/types';
 import { CardView } from './CardView';
 
 const SEAT_POS: Record<number, [number, number][]> = {
@@ -69,28 +69,39 @@ interface Flight {
 }
 
 /**
- * Trump first, then around the color wheel clubs→diamonds→spades→hearts so
- * colors alternate. The wheel can run in either direction; pick the one
- * whose VISIBLE suits (the suits actually held) alternate — a hand with no
- * spades under diamonds trump reads D-C-H, not D-H-C. The direction is
- * decided from `basis` (the full hand at the start of play), so the order
- * never reshuffles mid-round as suits run out.
+ * Order the suits actually held so that colors alternate — that outranks
+ * everything else, including where trump sits (S-H-D with spades trump must
+ * become D-S-H or H-S-D, never reds together). Trump-first is only a
+ * tiebreak among perfect arrangements. Decided from `basis` (the full hand
+ * at the start of play), so the order never reshuffles mid-round as suits
+ * run out.
  */
 const SUIT_WHEEL: Suit[] = ['C', 'D', 'S', 'H'];
-function suitOrder(trump: Suit | null, basis: Card[]): Suit[] {
-  const start = SUIT_WHEEL.indexOf(trump ?? 'S');
-  const forward = SUIT_WHEEL.map((_, i) => SUIT_WHEEL[(start + i) % 4]);
-  const backward = SUIT_WHEEL.map((_, i) => SUIT_WHEEL[(start - i + 4) % 4]);
-  const present = new Set(basis.map((c) => c.suit));
-  const touches = (order: Suit[]) => {
-    const visible = order.filter((s) => present.has(s));
-    let t = 0;
-    for (let i = 1; i < visible.length; i++) {
-      if (isRed(visible[i]) === isRed(visible[i - 1])) t++;
+
+function permutations<T>(arr: T[]): T[][] {
+  if (arr.length <= 1) return [arr];
+  return arr.flatMap((x, i) =>
+    permutations([...arr.slice(0, i), ...arr.slice(i + 1)]).map((p) => [x, ...p]));
+}
+
+export function suitOrder(trump: Suit | null, basis: Card[]): Suit[] {
+  const presentSet = new Set(basis.map((c) => c.suit));
+  const present = SUIT_WHEEL.filter((s) => presentSet.has(s));
+  let best: Suit[] = present;
+  let bestKey = Infinity;
+  for (const perm of permutations(present)) {
+    let touches = 0;
+    for (let i = 1; i < perm.length; i++) {
+      if (isRed(perm[i]) === isRed(perm[i - 1])) touches++;
     }
-    return t;
-  };
-  return touches(backward) < touches(forward) ? backward : forward;
+    const trumpFirst = trump && perm[0] === trump ? 0 : 1;
+    const key = touches * 10 + trumpFirst;
+    if (key < bestKey) {
+      bestKey = key;
+      best = perm;
+    }
+  }
+  return [...best, ...SUIT_WHEEL.filter((s) => !presentSet.has(s))];
 }
 
 function sortHand(hand: Card[], trump: Suit | null, basis: Card[] = hand): Card[] {
@@ -201,8 +212,6 @@ export function GameTable({ state, names, dispatch }: Props) {
   const [selection, setSelection] = useState<string[]>([]);
   const [collect, setCollect] = useState(false);
   const [ackReturn, setAckReturn] = useState(false);
-  const [kittyShow, setKittyShow] = useState(false);
-  const prevForKitty = useRef(state.phase);
   const [flights, setFlights] = useState<Flight[]>([]);
   const prevPhase = useRef(state.phase);
   const flightKey = useRef(0);
@@ -212,22 +221,15 @@ export function GameTable({ state, names, dispatch }: Props) {
     if (state.phase !== 'meld') setAckReturn(false);
   }, [state.phase, state.handNumber]);
 
-  // Flip the kitty face-up for everyone when the auction ends. The hide
-  // timer lives in a ref so a quick phase change (human names trump fast)
-  // can't cancel it and leave the reveal stuck on screen.
-  const kittyTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => {
-    const prev = prevForKitty.current;
-    prevForKitty.current = state.phase;
-    if (prev === 'bidding' && state.phase === 'trump' && mode.kittySize > 0) {
-      setKittyShow(true);
-      clearTimeout(kittyTimer.current);
-      kittyTimer.current = setTimeout(() => setKittyShow(false), 2400);
-    } else if (state.phase !== 'trump' && state.phase !== 'discard') {
-      setKittyShow(false);
-    }
-  }, [state.phase, mode.kittySize]);
-  useEffect(() => () => clearTimeout(kittyTimer.current), []);
+  // The flipped kitty is pure render state — no timers. The human bidder
+  // studies it until they name trump; a bot's kitty parks at the top of the
+  // table until the human clicks "Play hand" (mobile hides it once the
+  // stacked meld needs the space).
+  const kittyUp = mode.kittySize > 0 && state.kitty.length > 0 && state.bidWinner >= 0 &&
+    (state.bidWinner === 0
+      ? state.phase === 'trump'
+      : state.phase === 'trump' || state.phase === 'discard' ||
+        (state.phase === 'meld' && !narrow));
 
   // Trick pickup: let the completed trick sit in the middle, then sweep it to the winner.
   useEffect(() => {
@@ -285,11 +287,6 @@ export function GameTable({ state, names, dispatch }: Props) {
     () => (humanTurnToPlay ? legalPlays(state.hands[0], state.trick, state.trump!) : []),
     [state, humanTurnToPlay],
   );
-  const humanClaims = useMemo(
-    () => humanTurnToPlay && state.trick.length === 0 && state.hands[0].length > 1 &&
-      winsRemainingTricks(state.hands, 0, state.trump!),
-    [state, humanTurnToPlay],
-  );
   const legalIds = new Set(legal.map((c) => c.id));
 
   const isReview = state.phase === 'handReview';
@@ -329,6 +326,18 @@ export function GameTable({ state, names, dispatch }: Props) {
   const teamMeld = (team: number) =>
     state.melds.reduce((sum, m, seat) => (mode.teams[seat] === team ? sum + (m?.total ?? 0) : sum), 0);
 
+  // Live trick points: captured counters are public. Buried kitty counters
+  // are the bidder's secret, so they only show when the human buried them.
+  const trickPoints = (team: number) => {
+    let pts = state.captured[team]?.filter(isCounter).length ?? 0;
+    if (state.bidWinner === 0 && team === mode.teams[0]) {
+      pts += state.discard.filter(isCounter).length;
+    }
+    return pts;
+  };
+  const showPts = state.phase === 'play' || state.phase === 'trickEnd' || state.phase === 'handReview';
+  const showMeld = meldKnown && state.phase !== 'handEnd' && state.phase !== 'gameOver';
+
   const meldCardsFor = (seat: number): Card[] => {
     const m = state.melds[seat];
     if (!m) return [];
@@ -353,7 +362,6 @@ export function GameTable({ state, names, dispatch }: Props) {
       case 'pass2':
         return state.bidWinner === 0 ? '' : `${names[state.bidWinner]} is passing back…`;
       case 'play':
-        if (humanClaims) return 'You will win the rest of the tricks.';
         return state.turn === 0 ? 'Your play.' : '';
       case 'trickEnd':
         return `${names[state.trickWinner]} take${state.trickWinner === 0 ? '' : 's'} the trick.`;
@@ -378,12 +386,24 @@ export function GameTable({ state, names, dispatch }: Props) {
               </span>
             )}
           </div>
+          {(showMeld || showPts) && (
+            <div className="board-row board-labels" aria-hidden="true">
+              <span className="team-dot" />
+              <span className="board-name" />
+              {showMeld && <span className="board-col">Meld</span>}
+              {showPts && <span className="board-col board-col-pts">Pts</span>}
+              <span className="board-score" />
+            </div>
+          )}
           {state.scores.map((score, team) => (
             <div key={team} className="board-row">
               <span className="team-dot" style={{ background: TEAM_COLORS[team] }} />
               <span className="board-name">{teamName(state, names, team)}</span>
-              {meldKnown && state.phase !== 'handEnd' && state.phase !== 'gameOver' && (
-                <span className="board-meld" title="Meld this hand">{teamMeld(team)}</span>
+              {showMeld && (
+                <span className="board-col board-col-meld" title="Meld this hand">{teamMeld(team)}</span>
+              )}
+              {showPts && (
+                <span className="board-col board-col-pts" title="Trick points so far">{trickPoints(team)}</span>
               )}
               <span className="board-score">{score}</span>
             </div>
@@ -511,14 +531,16 @@ export function GameTable({ state, names, dispatch }: Props) {
           )}
         </div>
 
-        {/* The kitty, flipped face-up for everyone before the winner takes it.
-            Belt and braces: never past the trump/discard steps. */}
-        {kittyShow && state.kitty.length > 0 &&
-          (state.phase === 'trump' || state.phase === 'discard') && (
-          <div className="kitty-reveal">
-            <div className="received-label">{names[state.bidWinner]} takes the kitty</div>
+        {/* The kitty, flipped face-up for everyone once the auction ends */}
+        {kittyUp && (
+          <div className={`kitty-reveal ${state.bidWinner === 0 ? '' : 'kitty-north'}`}>
+            <div className="received-label">
+              {state.bidWinner === 0 ? 'Your kitty' : `${names[state.bidWinner]} takes the kitty`}
+            </div>
             <div className="received-cards">
-              {state.kitty.map((c) => <CardView key={c.id} card={c} size="mid" />)}
+              {state.kitty.map((c) => (
+                <CardView key={c.id} card={c} size={state.bidWinner === 0 ? 'mid' : 'small'} />
+              ))}
             </div>
           </div>
         )}
@@ -568,7 +590,11 @@ export function GameTable({ state, names, dispatch }: Props) {
         })}
         {isReview && (
           <div className="action-panel review-panel">
-            <div className="panel-label">The hands, as played this round</div>
+            <div className="panel-label">
+              {state.claimedBy !== null
+                ? `${state.claimedBy === 0 ? 'You take' : `${names[state.claimedBy]} takes`} the rest of the tricks`
+                : 'The hands, as played this round'}
+            </div>
             <button className="btn btn-gold" onClick={() => dispatch({ type: 'CONTINUE' })}>
               Show the score
             </button>

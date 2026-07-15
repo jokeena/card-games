@@ -250,7 +250,8 @@ body {
   padding: 8px 14px;
   background: rgba(250, 248, 240, 0.85);
   border-bottom: 1px solid #ddd7c2;
-  z-index: 25;
+  /* Above modal backdrops: Undo/Menu must stay clickable on the score popup */
+  z-index: 60;
 }
 .bar-trump {
   position: absolute;
@@ -270,6 +271,15 @@ body {
   animation: bubbleIn 0.3s ease-out;
 }
 .bar-trump-sym { font-size: 1.3rem; line-height: 1; }
+.bar-bid {
+  color: var(--ink-dim);
+  font-weight: 600;
+  font-size: 0.82rem;
+  border-left: 1px solid var(--panel-edge);
+  padding-left: 9px;
+  margin-left: 3px;
+  white-space: nowrap;
+}
 .bar-spacer { flex: 1; }
 .bar-btn {
   background: #fff;
@@ -406,13 +416,24 @@ body {
   padding: 3px 0;
 }
 .board-name { flex: 1; white-space: nowrap; }
-.board-meld {
+/* Meld/Pts columns: fixed width + tabular digits so 9→10 never shifts a pixel */
+.board-col {
+  flex: 0 0 auto;
+  width: 34px;
+  text-align: center;
+  font-size: 0.82rem;
   color: var(--ink-dim);
-  font-size: 0.78rem;
-  background: rgba(0, 0, 0, 0.06);
-  border-radius: 8px;
-  padding: 1px 7px;
+  font-variant-numeric: tabular-nums;
 }
+.board-col-pts { color: #2e7d3a; }
+.board-labels { padding: 2px 0 0; }
+.board-labels .board-col {
+  font-size: 0.56rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.board-labels .team-dot,
+.board-labels .board-score { visibility: hidden; }
 .board-score {
   font-weight: 700;
   font-size: 1rem;
@@ -448,9 +469,10 @@ body {
   font-family: var(--serif);
   font-size: 1.35rem;
   font-weight: 700;
-  color: var(--ink);
-  background: radial-gradient(circle at 32% 28%, #ffffff 0%, #f4f1e6 70%);
-  border: 3px solid var(--team);
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  background: radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.28) 0%, transparent 55%), var(--team);
+  border: 2.5px solid rgba(255, 255, 255, 0.92);
   box-shadow: 0 4px 12px rgba(0, 30, 10, 0.35);
   transition: box-shadow 0.25s, filter 0.25s;
 }
@@ -721,6 +743,14 @@ body {
   z-index: 14;
   animation: fadeIn 0.3s ease-out;
 }
+/* A bot's kitty parks at the top middle, out of the way of hands and meld */
+.kitty-north {
+  top: 13%;
+  gap: 5px;
+  z-index: 6;
+}
+.kitty-north .received-label { font-size: 0.72rem; padding: 3px 11px; }
+.kitty-north .received-cards { gap: 4px; }
 .received-ack {
   top: 62%;
   z-index: 18;
@@ -1243,7 +1273,19 @@ body {
   .board-head { display: none; }
   .board-row { padding: 0; gap: 4px; }
   .board-name { max-width: 96px; overflow: hidden; text-overflow: ellipsis; }
-  .board-meld { font-size: 0.64rem; padding: 0 5px; }
+  /* The wrap-strip has no column alignment — inline chips with CSS labels */
+  .board-labels { display: none; }
+  .board-col {
+    width: auto;
+    font-size: 0.6rem;
+    background: rgba(0, 0, 0, 0.06);
+    border-radius: 8px;
+    padding: 0 5px;
+    white-space: nowrap;
+  }
+  .board-col-pts { background: rgba(46, 125, 58, 0.1); }
+  .board-col-meld::before { content: 'meld '; }
+  .board-col-pts::before { content: 'pts '; }
   .board-score { font-size: 0.82rem; min-width: 0; }
   .board-bid {
     margin: 0; padding: 0;
@@ -1322,6 +1364,9 @@ body {
   .received-ack { padding: 12px 14px 14px; }
   .received-ack .received-label { font-size: 0.85rem; }
   .kitty-reveal { top: 36%; }
+  .kitty-north { top: 24%; }
+  /* The score strip already names the bid on phones */
+  .bar-bid { display: none; }
   .strewn { transform: scale(0.8); }
 
   /* --- panels & controls --- */

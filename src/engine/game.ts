@@ -67,6 +67,8 @@ export interface GameState {
 
   trick: Played[];
   trickWinner: number;
+  /** Seat that claimed the remaining tricks this hand, or null. */
+  claimedBy: number | null;
   tricksPlayed: number;
   captured: Card[][]; // per team
   teamTookTrick: boolean[];
@@ -119,6 +121,7 @@ function freshHand(state: GameState, dealer: number): GameState {
     voids: Array.from({ length: mode.players }, () => Array(4).fill(false)),
     trick: [],
     trickWinner: -1,
+    claimedBy: null,
     tricksPlayed: 0,
     captured: Array.from({ length: mode.teamCount }, () => []),
     teamTookTrick: Array(mode.teamCount).fill(false),
@@ -152,6 +155,7 @@ export function newGame(mode: ModeConfig): GameState {
     voids: [],
     trick: [],
     trickWinner: -1,
+    claimedBy: null,
     tricksPlayed: 0,
     captured: [],
     teamTookTrick: [],
@@ -429,6 +433,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         hands: state.hands.map(() => []),
         captured,
         teamTookTrick,
+        claimedBy: action.seat,
         tricksPlayed: mode.handSize,
         lastTrickTeam: team,
         log: log(state, `Seat ${action.seat} wins the rest of the tricks.`),

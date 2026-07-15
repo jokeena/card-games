@@ -4,8 +4,6 @@ import { partnerOf } from '../engine/modes';
 import { legalPlays, winningIndex } from '../engine/tricks';
 import { Card, isCounter, RANK_POWER, RANKS, Suit, SUITS } from '../engine/types';
 
-export type Difficulty = 'easy' | 'medium' | 'hard';
-
 interface SuitEval {
   suit: Suit;
   meld: number;
@@ -59,39 +57,36 @@ function evaluateSuits(state: GameState, seat: number): SuitEval[] {
   }).sort((a, b) => b.ceiling - a.ceiling);
 }
 
-function maxBidFor(state: GameState, seat: number, difficulty: Difficulty): number {
+function maxBidFor(state: GameState, seat: number): number {
   const best = evaluateSuits(state, seat)[0];
-  if (difficulty === 'easy') return Math.round(best.ceiling * 0.85 - 2);
-  // Going set costs the whole bid, so discipline beats aggression: hard wins
-  // through play, not by outbidding its own hand.
+  // Going set costs the whole bid, so discipline beats aggression: the bots
+  // win through play, not by outbidding their own hands.
   return Math.round(best.ceiling - 1);
 }
 
-function pickBidAction(state: GameState, seat: number, difficulty: Difficulty): GameAction {
+function pickBidAction(state: GameState, seat: number): GameAction {
   const partner = partnerOf(state.mode, seat);
   const min = state.highSeat === -1 ? state.mode.bidStart : state.highBid + 1;
 
   // Partner holds the high bid: only take the contract off them with an
   // easy-make hand — clearing the price by a point isn't a reason to bid.
   if (partner !== null && state.highSeat === partner) {
-    const max = maxBidFor(state, seat, difficulty);
-    if (min <= max - 3) return { type: 'BID', seat, amount: min };
+    if (min <= maxBidFor(state, seat) - 3) return { type: 'BID', seat, amount: min };
     return { type: 'PASS_BID', seat };
   }
 
   // A partner who has voluntarily bid is promising real help.
-  const partnerSupport =
-    partner !== null && difficulty !== 'easy' && state.bids[partner] !== null ? 2 : 0;
-  const max = maxBidFor(state, seat, difficulty) + partnerSupport;
+  const partnerSupport = partner !== null && state.bids[partner] !== null ? 2 : 0;
+  const max = maxBidFor(state, seat) + partnerSupport;
   // Jump bids only raise the bot's own make-threshold — always bid the minimum.
   if (min <= max) return { type: 'BID', seat, amount: min };
   // In passing modes a contract is strong (partner consolidates the winner's
-  // hand), so hard bots don't hand one to an opponent cheap: with a tolerable
-  // hand they push an opposing high bidder toward a fair price before dropping
-  // out, accepting the risk of getting stuck. In other modes contracts are
+  // hand), so don't hand one to an opponent cheap: with a tolerable hand,
+  // push an opposing high bidder toward a fair price before dropping out,
+  // accepting the risk of getting stuck. In other modes contracts are
   // fragile and bidding up just eats sets. (Partner holding the high bid
   // already returned above, so any high bidder here is an opponent.)
-  if (difficulty === 'hard' && state.mode.passCount > 0 && state.highSeat !== -1) {
+  if (state.mode.passCount > 0 && state.highSeat !== -1) {
     const fairPrice = state.mode.bidStart + 7;
     if (min <= fairPrice && max >= min - 4) {
       return { type: 'BID', seat, amount: min };
@@ -245,14 +240,10 @@ function pickReturn(hand: Card[], trump: Suit, count: number): string[] {
   return best.map((c) => c.id);
 }
 
-function pickPlay(state: GameState, seat: number, difficulty: Difficulty): Card {
+function pickPlay(state: GameState, seat: number): Card {
   const hand = state.hands[seat];
   const trump = state.trump!;
   const legal = legalPlays(hand, state.trick, trump);
-
-  if (difficulty === 'easy') {
-    return legal[Math.floor(Math.random() * legal.length)];
-  }
 
   const { mode } = state;
   const myTeam = mode.teams[seat];
@@ -263,53 +254,93 @@ function pickPlay(state: GameState, seat: number, difficulty: Difficulty): Card 
   const isFriendly = (s: number) =>
     mode.teams[s] === myTeam || (!iAmBidTeam && mode.teams[s] !== bidTeam);
   const byPowerAsc = [...legal].sort((a, b) => RANK_POWER[a.rank] - RANK_POWER[b.rank]);
+  const trumpIdx = SUITS.indexOf(trump);
 
   // Leading a trick.
   if (state.trick.length === 0) {
+    // Count every card this seat has legitimately seen: captured piles, its
+    // own hand, and — for the bid winner only — its own buried kitty cards.
+    // (The original kitty was flipped publicly, but cards the bidder KEPT are
+    // still live, so only the bidder may count the burial.)
     const seen = new Map<string, number>();
     const note = (c: Card) => seen.set(`${c.suit}${c.rank}`, (seen.get(`${c.suit}${c.rank}`) ?? 0) + 1);
-    if (difficulty === 'hard') {
-      state.captured.forEach((pile) => pile.forEach(note));
-      hand.forEach(note);
-    }
+    state.captured.forEach((pile) => pile.forEach(note));
+    hand.forEach(note);
+    if (seat === state.bidWinner) state.discard.forEach(note);
+
     const myTrumps = legal.filter((c) => c.suit === trump)
       .sort((a, b) => RANK_POWER[b.rank] - RANK_POWER[a.rank]);
-    const trumpIdx = SUITS.indexOf(trump);
     const topTrumpIsBoss = myTrumps.length > 0 && (myTrumps[0].rank === 'A' ||
-      (difficulty === 'hard' && (seen.get(`${trump}A`) ?? 0) === 2));
+      (seen.get(`${trump}A`) ?? 0) === 2);
+    const ruffSafe = (c: Card) => {
+      const suitIdx = SUITS.indexOf(c.suit);
+      return !Array.from({ length: mode.players }, (_, s) => s).some((s) =>
+        s !== seat && !isFriendly(s) &&
+        state.voids[s]?.[suitIdx] && !state.voids[s]?.[trumpIdx]);
+    };
 
     // The bidding side pulls trump before cashing side aces — but only while
     // pulling still buys something (points live in the late tricks, so keep
     // some trump home), and never by donating a counter to an outstanding ace.
+    let wantPull = false;
     if (iAmBidTeam) {
       const oppsWithTrump = Array.from({ length: mode.players }, (_, s) => s)
         .filter((s) => s !== seat && !isFriendly(s) && !state.voids[s]?.[trumpIdx]).length;
-      // Hard counts the cards: how many trumps sit outside my hand and the piles.
-      const outstanding = difficulty === 'hard'
-        ? 12 - RANKS.reduce((sum, r) => sum + (seen.get(`${trump}${r}`) ?? 0), 0)
-        : 99;
-      const pullFrom = difficulty === 'hard' ? 3 : 4;
+      const outstanding = 12 - RANKS.reduce((sum, r) => sum + (seen.get(`${trump}${r}`) ?? 0), 0);
       // Trump concentrated in one hand isn't worth digging out.
       const worthPulling = oppsWithTrump >= 2 ? outstanding > 2 : outstanding > 3;
-      if (myTrumps.length >= pullFrom && oppsWithTrump > 0 && worthPulling) {
-        if (topTrumpIsBoss) return myTrumps[0];
-        // Not boss: flush the ace with a cheap trump instead of feeding it a 10.
-        const low = myTrumps[myTrumps.length - 1];
-        if (myTrumps.length >= 4 && !isCounter(low)) return low;
-      }
+      wantPull = myTrumps.length >= 3 && oppsWithTrump > 0 && worthPulling;
+    }
+
+    // A boss trump lead keeps the lead, so it risks nothing — and every
+    // trump stripped protects the lone aces below from a future ruff.
+    if (wantPull && topTrumpIsBoss) return myTrumps[0];
+
+    // A lone off-suit ace is cashed before any lead that could LOSE the lead
+    // (a forcing low trump, a junk lead) — surrender the lead once and the
+    // opponents cash their copy first, killing yours to a forced follow.
+    const loneAces = legal.filter((c) =>
+      c.rank === 'A' && c.suit !== trump &&
+      hand.filter((x) => x.suit === c.suit).length === 1 && ruffSafe(c));
+    if (loneAces.length > 0) return loneAces[0];
+
+    // Non-boss pull: flush the ace with a cheap trump instead of feeding it
+    // a 10 — safe now that the perishable aces are cashed.
+    if (wantPull && myTrumps.length >= 4) {
+      const low = myTrumps[myTrumps.length - 1];
+      if (!isCounter(low)) return low;
     }
     // Cash aces — defenders especially, before the bidder strips their trump.
-    const aces = legal.filter((c) => c.rank === 'A' && c.suit !== trump);
+    // Shortest suits first: those aces are the most perishable.
+    const aces = legal.filter((c) => c.rank === 'A' && c.suit !== trump)
+      .sort((a, b) =>
+        hand.filter((x) => x.suit === a.suit).length -
+        hand.filter((x) => x.suit === b.suit).length);
     for (const ace of aces) {
-      const otherAceOut =
-        difficulty !== 'hard' || (seen.get(`${ace.suit}A`) ?? 0) < 2;
-      if (!otherAceOut || difficulty === 'medium' || Math.random() < 0.9) return ace;
+      const otherAceOut = (seen.get(`${ace.suit}A`) ?? 0) < 2;
+      if (!otherAceOut || Math.random() < 0.9) return ace;
     }
     // A short trump holding topped by the boss gets cashed before the bidder
     // draws it out — an unprotected trump ace (or boss 10) mustn't die in hand.
     if (!iAmBidTeam && myTrumps.length > 0 && myTrumps.length <= 2 && topTrumpIsBoss) {
       return myTrumps[0];
     }
+    // A counter made boss by the fallen higher cards (both aces gone → the 10
+    // runs the suit) gets cashed like an ace — unless an unfriendly seat is
+    // known void there and may still hold trump to ruff it.
+    const bossCash = legal
+      .filter((c) => c.suit !== trump && c.rank !== 'A' && isCounter(c))
+      .filter((c) => RANKS
+        .filter((r) => RANK_POWER[r] > RANK_POWER[c.rank])
+        .every((r) => (seen.get(`${c.suit}${r}`) ?? 0) === 2))
+      .filter((c) => {
+        const suitIdx = SUITS.indexOf(c.suit);
+        return !Array.from({ length: mode.players }, (_, s) => s).some((s) =>
+          s !== seat && !isFriendly(s) &&
+          state.voids[s]?.[suitIdx] && !state.voids[s]?.[trumpIdx]);
+      })
+      .sort((a, b) => RANK_POWER[b.rank] - RANK_POWER[a.rank]);
+    if (bossCash.length > 0) return bossCash[0];
     // Otherwise lead low junk (never open a trump for the bidder).
     const junk = byPowerAsc.filter((c) => !isCounter(c) && c.suit !== trump);
     return junk[0] ?? byPowerAsc[0];
@@ -342,19 +373,38 @@ function pickPlay(state: GameState, seat: number, difficulty: Difficulty): Card 
   const ledSuit = state.trick[0].card.suit;
   const secure =
     lastToPlay ||
-    (difficulty === 'hard' && !unfriendlyBehind) ||
+    !unfriendlyBehind ||
     (winningCard.suit === trump && RANK_POWER[winningCard.rank] >= 4) ||
     (winningCard.rank === 'A' && winningCard.suit === ledSuit);
 
-  if (isFriendly(winnerSeat) && secure) {
-    // House scoring makes every counter worth 1, so smear the weakest one:
-    // Kings before 10s, off-trump before trump, and never an ace.
+  // House scoring makes every counter worth 1, so smear the weakest one:
+  // Kings before 10s, off-trump before trump, and never an ace.
+  const smearCard = () => {
     const smears = nonWinners
       .filter((c) => isCounter(c) && c.rank !== 'A')
       .sort((a, b) =>
         (Number(a.suit === trump) - Number(b.suit === trump)) ||
         (RANK_POWER[a.rank] - RANK_POWER[b.rank]));
-    if (smears.length > 0) return smears[0];
+    return smears[0] ?? null;
+  };
+
+  // A weak trump lead with my partner still to play: must-beat forces any
+  // trump holder to overtrump, so unless partner is known out of trump,
+  // treat this as their trick and bank a counter on it.
+  const partnerBehind = Array.from({ length: mode.players }, (_, s) => s)
+    .find((s) => s !== seat && mode.teams[s] === myTeam && !playedSeats.has(s));
+  const weakTrumpLead =
+    ledSuit === trump && winningCard.suit === trump &&
+    RANK_POWER[winningCard.rank] <= 2 && !isFriendly(winnerSeat);
+  if (weakTrumpLead && partnerBehind !== undefined &&
+      !state.voids[partnerBehind]?.[SUITS.indexOf(trump)]) {
+    const smear = smearCard();
+    if (smear) return smear;
+  }
+
+  if (isFriendly(winnerSeat) && secure) {
+    const smear = smearCard();
+    if (smear) return smear;
     return nonWinners.sort((a, b) => RANK_POWER[a.rank] - RANK_POWER[b.rank])[0];
   }
 
@@ -381,12 +431,12 @@ function pickPlay(state: GameState, seat: number, difficulty: Difficulty): Card 
 }
 
 /** Decide the acting bot's move for the current phase. */
-export function botAction(state: GameState, seat: number, difficulty: Difficulty): GameAction | null {
+export function botAction(state: GameState, seat: number): GameAction | null {
   const { mode } = state;
 
   switch (state.phase) {
     case 'bidding':
-      return pickBidAction(state, seat, difficulty);
+      return pickBidAction(state, seat);
     case 'trump':
       return { type: 'NAME_TRUMP', seat, suit: evaluateSuits(state, seat)[0].suit };
     case 'discard':
@@ -396,7 +446,7 @@ export function botAction(state: GameState, seat: number, difficulty: Difficulty
     case 'pass2':
       return { type: 'PASS_CARDS', seat, cardIds: pickReturn(state.hands[seat], state.trump!, mode.passCount) };
     case 'play':
-      return { type: 'PLAY', seat, cardId: pickPlay(state, seat, difficulty).id };
+      return { type: 'PLAY', seat, cardId: pickPlay(state, seat).id };
     default:
       return null;
   }

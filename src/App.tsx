@@ -1,5 +1,5 @@
 import { useEffect, useReducer, useRef, useState } from 'react';
-import { botAction, Difficulty } from './bots/bot';
+import { botAction } from './bots/bot';
 import { GameAction, gameReducer, GameState, newGame } from './engine/game';
 import { MODES, ModeConfig, partnerOf } from './engine/modes';
 import { winsRemainingTricks } from './engine/tricks';
@@ -15,7 +15,6 @@ const STATS_KEY = 'pinochle-stats';
 interface SaveData {
   state: GameState;
   names: string[];
-  difficulty: Difficulty;
 }
 
 function loadSave(): SaveData | null {
@@ -24,10 +23,11 @@ function loadSave(): SaveData | null {
     if (!raw) return null;
     const data = JSON.parse(raw) as SaveData;
     if (!data?.state?.mode || !data.names || data.state.phase === 'gameOver') return null;
-    // Saves from before the public-voids field: backfill it.
+    // Saves from before newer fields: backfill them.
     if (!data.state.voids) {
       data.state.voids = Array.from({ length: data.state.mode.players }, () => Array(4).fill(false));
     }
+    if (data.state.claimedBy === undefined) data.state.claimedBy = null;
     return data;
   } catch {
     return null;
@@ -130,14 +130,13 @@ function histReducer(h: Hist, action: HistAction): Hist {
 function botDelay(state: GameState): number {
   if (state.phase === 'bidding') return 160;
   if (state.phase === 'play') return 380;
-  // Give the face-up kitty reveal time to be read before trump is named.
-  if (state.phase === 'trump' && state.mode.kittySize > 0) return 2400;
+  // A beat to notice the flipped kitty before trump is named.
+  if (state.phase === 'trump' && state.mode.kittySize > 0) return 1000;
   return 500;
 }
 
-function Game({ mode, difficulty, save, onExit }: {
+function Game({ mode, save, onExit }: {
   mode: ModeConfig;
-  difficulty: Difficulty;
   save: SaveData | null;
   onExit: () => void;
 }) {
@@ -163,8 +162,8 @@ function Game({ mode, difficulty, save, onExit }: {
       }
       return;
     }
-    localStorage.setItem(SAVE_KEY, JSON.stringify({ state, names, difficulty } satisfies SaveData));
-  }, [state, names, difficulty, mode]);
+    localStorage.setItem(SAVE_KEY, JSON.stringify({ state, names } satisfies SaveData));
+  }, [state, names, mode]);
 
   // Per-hand stats, once per hand (a resumed game must not re-count its saved hand).
   const lastHandRecorded = useRef(
@@ -213,8 +212,7 @@ function Game({ mode, difficulty, save, onExit }: {
       // A bot bid winner concedes only a near-mathematically-dead bid (25 trick
       // points exist per hand) — playing on risks feeding the setters more.
       // (Slower when the human just received returned cards, so they can be read.)
-      const limit = difficulty === 'hard' ? 23 : difficulty === 'medium' ? 24 : 25;
-      if (tricksNeeded > limit && !undone) {
+      if (tricksNeeded > 23 && !undone) {
         const wait = partnerOf(mode, state.bidWinner) === 0 ? 2600 : 900;
         const t = setTimeout(() => dispatch({ type: 'THROW_IN', seat: state.bidWinner }), wait);
         return () => clearTimeout(t);
@@ -222,23 +220,25 @@ function Game({ mode, difficulty, save, onExit }: {
       return; // human clicks "Play hand"
     }
 
-    // Human on lead and guaranteed the rest no matter the order: end it there.
-    // With a single card left, just let it be played out normally.
-    if (state.phase === 'play' && state.turn === 0 && state.trick.length === 0 && !undone &&
-        state.hands[0].length > 1 && winsRemainingTricks(state.hands, 0, state.trump!)) {
-      const t = setTimeout(() => dispatch({ type: 'CLAIM_REST', seat: 0 }), 250);
-      return () => clearTimeout(t);
+    // Anyone on lead and guaranteed the rest no matter the order — human or
+    // bot — ends the hand right there, immediately. With a single card left,
+    // just let it be played out normally.
+    if (state.phase === 'play' && state.trick.length === 0 && !undone &&
+        state.hands[state.turn]?.length > 1 &&
+        winsRemainingTricks(state.hands, state.turn, state.trump!)) {
+      dispatch({ type: 'CLAIM_REST', seat: state.turn });
+      return;
     }
 
     const actor = actorFor(state);
     if (actor !== null && actor !== 0) {
       const t = setTimeout(() => {
-        const action = botAction(state, actor, difficulty);
+        const action = botAction(state, actor);
         if (action) dispatch(action);
       }, botDelay(state));
       return () => clearTimeout(t);
     }
-  }, [state, undone, difficulty, mode]);
+  }, [state, undone, mode]);
 
   return (
     <div className="game-root">
@@ -255,6 +255,11 @@ function Game({ mode, difficulty, save, onExit }: {
               {SUIT_SYMBOL[state.trump]}
             </span>
             {SUIT_NAME[state.trump]} trump
+            {state.bidWinner >= 0 && (
+              <span className="bar-bid">
+                {names[state.bidWinner]} bid {state.highBid}
+              </span>
+            )}
           </span>
         )}
         <button className="bar-btn bar-btn-round" title="Rules" onClick={() => setShowRules(true)}>i</button>
@@ -338,18 +343,10 @@ function StatsModal({ onClose }: { onClose: () => void }) {
 
 export default function App() {
   const [mode, setMode] = useState<ModeConfig | null>(null);
-  const [difficulty, setDifficulty] = useState<Difficulty>(
-    () => (localStorage.getItem('pinochle-difficulty') as Difficulty) || 'medium',
-  );
   const [gameKey, setGameKey] = useState(0);
   const [save, setSave] = useState<SaveData | null>(loadSave);
   const [resuming, setResuming] = useState(false);
   const [showStats, setShowStats] = useState(false);
-
-  const pickDifficulty = (d: Difficulty) => {
-    setDifficulty(d);
-    localStorage.setItem('pinochle-difficulty', d);
-  };
 
   const start = (m: ModeConfig, resume: boolean) => {
     setResuming(resume);
@@ -362,7 +359,6 @@ export default function App() {
       <Game
         key={gameKey}
         mode={mode}
-        difficulty={resuming && save ? save.difficulty : difficulty}
         save={resuming ? save : null}
         onExit={() => { setMode(null); setSave(loadSave()); }}
       />
@@ -390,19 +386,6 @@ export default function App() {
             </button>
           </>
         )}
-
-        <div className="menu-section">Bots</div>
-        <div className="segmented">
-          {(['easy', 'medium', 'hard'] as Difficulty[]).map((d) => (
-            <button
-              key={d}
-              className={difficulty === d ? 'seg-active' : ''}
-              onClick={() => pickDifficulty(d)}
-            >
-              {d[0].toUpperCase() + d.slice(1)}
-            </button>
-          ))}
-        </div>
 
         <div className="menu-section">{save ? 'New game' : 'Play'}</div>
         <div className="mode-grid">

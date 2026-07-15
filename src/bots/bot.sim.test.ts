@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { botAction, Difficulty } from './bot';
+import { botAction } from './bot';
 import { GameState, gameReducer, newGame } from '../engine/game';
 import { MODES, partnerOf } from '../engine/modes';
 
@@ -26,7 +26,7 @@ interface SimResult {
 }
 
 /** Bots play every seat until the game ends. Throws if the reducer ever stalls. */
-function playGame(modeId: string, difficulty: Difficulty): SimResult {
+function playGame(modeId: string): SimResult {
   const mode = MODES.find((m) => m.id === modeId)!;
   let state = newGame(mode);
   let handsPlayed = 0;
@@ -49,7 +49,7 @@ function playGame(modeId: string, difficulty: Difficulty): SimResult {
 
     const actor = actorFor(state);
     if (actor === null) throw new Error(`no actor in phase ${state.phase}`);
-    const action = botAction(state, actor, difficulty);
+    const action = botAction(state, actor);
     if (!action) throw new Error(`bot returned no action in ${state.phase}`);
     const next = gameReducer(state, action);
     if (next === state) {
@@ -57,27 +57,25 @@ function playGame(modeId: string, difficulty: Difficulty): SimResult {
     }
     state = next;
   }
-  throw new Error(`game did not finish (${modeId}, ${difficulty})`);
+  throw new Error(`game did not finish (${modeId})`);
 }
 
 describe('bot simulation — full games complete legally in every mode', () => {
   for (const mode of MODES) {
-    for (const difficulty of ['medium', 'hard'] as Difficulty[]) {
-      it(`${mode.id} / ${difficulty}`, () => {
-        let hands = 0;
-        let sets = 0;
-        const games = 12;
-        for (let g = 0; g < games; g++) {
-          const r = playGame(mode.id, difficulty);
-          expect(r.state.phase).toBe('gameOver');
-          expect(r.state.winnerTeam).not.toBeNull();
-          hands += r.handsPlayed;
-          sets += r.setsSeen;
-        }
-        // Sanity: bids are neither always made nor always set.
-        expect(hands).toBeGreaterThan(0);
-        expect(sets).toBeLessThan(hands);
-      });
-    }
+    it(mode.id, () => {
+      let hands = 0;
+      let sets = 0;
+      const games = 20;
+      for (let g = 0; g < games; g++) {
+        const r = playGame(mode.id);
+        expect(r.state.phase).toBe('gameOver');
+        expect(r.state.winnerTeam).not.toBeNull();
+        hands += r.handsPlayed;
+        sets += r.setsSeen;
+      }
+      // Sanity: bids are neither always made nor always set.
+      expect(hands).toBeGreaterThan(0);
+      expect(sets).toBeLessThan(hands);
+    });
   }
 });
