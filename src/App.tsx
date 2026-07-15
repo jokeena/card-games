@@ -66,7 +66,7 @@ function updateStats(modeId: string, apply: (m: ModeStats) => void) {
   localStorage.setItem(STATS_KEY, JSON.stringify(stats));
 }
 
-const NAME_POOL = ['Audrey', 'James', 'Lorraine', 'Ella', 'Reagan', 'John', 'Sean', 'Cha Cha', 'Carl'];
+const NAME_POOL = ['Audrey', 'James', 'Lorraine', 'Ella', 'Reagan', 'John', 'Sean', 'Cha Cha', 'Carl', 'Blake', 'Jeff'];
 
 function drawNames(players: number): string[] {
   const pool = [...NAME_POOL];
