@@ -29,6 +29,11 @@ A generic driver loop that plays full games via the DOM (selectors that matter):
 
 Undo check: count `.hand-cards .card` before playing, play, undo, count again.
 
+Mobile emulation gotcha: with `setViewport({ isMobile: true })` the layout
+viewport (`window.innerHeight` ~877) runs taller than the visible 844px --
+`position: fixed; bottom: 0` anchors below the screenshot edge. Size
+full-screen overlays with `100dvh` (which tracks 844), never a bottom anchor.
+
 Bot-quality changes: don't eyeball — run a temp vitest sim (bots on all seats
 via `botAction` + `gameReducer`, CONTINUE through meld/trickEnd/handReview/handEnd)
 and compare hard-vs-medium win rates per mode against team-count chance baseline.

@@ -16,9 +16,9 @@ const SEAT_POS: Record<number, [number, number][]> = {
    and the sides sit lower where there's width to spare. */
 const MOBILE_SEAT_POS: Record<number, [number, number][]> = {
   3: [[50, 100], [14, 34], [86, 34]],
-  4: [[50, 100], [11, 44], [50, 16], [89, 44]],
+  4: [[50, 100], [11, 44], [50, 18], [89, 44]],
   5: [[50, 100], [9, 54], [26, 19], [74, 19], [91, 54]],
-  6: [[50, 100], [9, 58], [26, 19], [50, 15], [74, 19], [91, 58]],
+  6: [[50, 100], [9, 58], [26, 19], [50, 18], [74, 19], [91, 58]],
 };
 
 export const TEAM_COLORS = ['#53b4e8', '#f0a53c', '#b26fd1', '#6dbf73', '#e06868'];
@@ -34,11 +34,13 @@ const TRICK_OFFSET: Record<number, [number, number][]> = {
   6: [[0, 58], [-90, 58], [-90, -56], [0, -56], [90, -56], [90, 58]],
 };
 
-/* Tighter clusters for the smaller mobile cards (58px wide). */
+/* Tighter clusters for the smaller mobile cards (58px wide). The 3P trick
+   sits low (side seats' fans reach the old height); 5P side cards tuck down
+   and inward, clear of the left/right players' fans. */
 const MOBILE_TRICK_OFFSET: Record<number, [number, number][]> = {
-  3: [[0, 54], [-64, -26], [64, -26]],
+  3: [[0, 66], [-64, 4], [64, 4]],
   4: [[0, 62], [-68, 0], [0, -46], [68, 0]],
-  5: [[0, 66], [-94, 10], [-36, -48], [36, -48], [94, 10]],
+  5: [[0, 66], [-80, 26], [-36, -48], [36, -48], [80, 26]],
   6: [[0, 48], [-66, 48], [-66, -46], [0, -46], [66, -46], [66, 48]],
 };
 
@@ -371,6 +373,10 @@ export function GameTable({ state, names, dispatch }: Props) {
   })();
 
   const isTrickEnd = state.phase === 'trickEnd';
+  // Sheet listing order: around the table, the human last.
+  const sheetSeats = Array.from({ length: mode.players }, (_, s) => s)
+    .filter((s) => s !== 0)
+    .concat(0);
 
   return (
     <div className="table-wrap">
@@ -386,7 +392,7 @@ export function GameTable({ state, names, dispatch }: Props) {
               </span>
             )}
           </div>
-          {(showMeld || showPts) && (
+          {!narrow && (showMeld || showPts) && (
             <div className="board-row board-labels" aria-hidden="true">
               <span className="team-dot" />
               <span className="board-name" />
@@ -395,7 +401,7 @@ export function GameTable({ state, names, dispatch }: Props) {
               <span className="board-score" />
             </div>
           )}
-          {state.scores.map((score, team) => (
+          {!narrow && state.scores.map((score, team) => (
             <div key={team} className="board-row">
               <span className="team-dot" style={{ background: TEAM_COLORS[team] }} />
               <span className="board-name">{teamName(state, names, team)}</span>
@@ -408,6 +414,30 @@ export function GameTable({ state, names, dispatch }: Props) {
               <span className="board-score">{score}</span>
             </div>
           ))}
+          {/* Phones: one column block per team — meld and points line up
+              right under the team's score, labels down the left side. */}
+          {narrow && (
+            <div className={`board-cols${state.scores.length >= 4 ? ' bc-tight' : ''}`}>
+              {(showMeld || showPts) && (
+                <span className="bc-labels" aria-hidden="true">
+                  <span className="bc-line" />
+                  {showMeld && <span className="bc-line bc-lab">Meld</span>}
+                  {showPts && <span className="bc-line bc-lab">Pts</span>}
+                </span>
+              )}
+              {state.scores.map((score, team) => (
+                <span key={team} className="bc-team">
+                  <span className="bc-line">
+                    <span className="team-dot" style={{ background: TEAM_COLORS[team] }} />
+                    <span className="bc-name">{teamName(state, names, team)}</span>
+                    <span className="bc-score">{score}</span>
+                  </span>
+                  {showMeld && <span className="bc-line bc-val">{teamMeld(team)}</span>}
+                  {showPts && <span className="bc-line bc-val bc-pts">{trickPoints(team)}</span>}
+                </span>
+              ))}
+            </div>
+          )}
           {state.highSeat >= 0 && state.phase !== 'gameOver' && (
             <div className="board-bid">
               Bid {state.highBid} — {names[state.bidWinner >= 0 ? state.bidWinner : state.highSeat]}
@@ -433,7 +463,7 @@ export function GameTable({ state, names, dispatch }: Props) {
             </div>
             <div className="seat-name">{names[seat]}</div>
             <div className="seat-fan">
-              {state.hands[seat]?.slice(0, 12).map((c, i, arr) => (
+              {state.hands[seat]?.slice(0, narrow ? 10 : 12).map((c, i, arr) => (
                 <div key={c.id} className="fan-back"
                   style={{ transform: `rotate(${(i - (arr.length - 1) / 2) * 5}deg)` }} />
               ))}
@@ -451,31 +481,59 @@ export function GameTable({ state, names, dispatch }: Props) {
 
         {/* Meld laid out on the table. Six-handed, the three top seats sit so
             close that centered rows collide — spread the side melds outward
-            and drop the middle one toward the table center. Portrait phones
-            instead stack every meld down the center, labeled by name. */}
-        {meldVisible && positions.map(([sx, sy], seat) => {
+            and drop the middle one toward the table center. */}
+        {meldVisible && !narrow && positions.map(([sx, sy], seat) => {
           const cards = meldCardsFor(seat);
           if (cards.length === 0) return null;
           const spread = mode.players === 6 ? 0.12 : 0.42;
-          let mx = sx + (50 - sx) * spread;
+          const mx = sx + (50 - sx) * spread;
           const deep = mode.players === 6 && seat === 3 ? 1.05 : 0.72;
-          let my = sy + (44 - sy) * (seat === 0 ? 0.4 : deep);
-          if (narrow) {
-            mx = 50;
-            const order = seat === 0 ? mode.players - 1 : seat - 1;
-            my = 15 + order * (mode.players >= 5 ? 12.5 : 15);
-          }
+          const my = sy + (44 - sy) * (seat === 0 ? 0.4 : deep);
           return (
             <div key={`meld-${seat}`} className="meld-row" style={{ left: `${mx}%`, top: `${my}%` }}>
-              <span className="meld-row-badge">
-                {narrow
-                  ? `${seat === 0 ? 'You' : names[seat]} · ${state.melds[seat]!.total}`
-                  : state.melds[seat]!.total}
-              </span>
+              <span className="meld-row-badge">{state.melds[seat]!.total}</span>
               {cards.map((c) => <CardView key={c.id} card={c} size="mid" />)}
             </div>
           );
         })}
+
+        {/* Portrait phones: meld strewn on a tall narrow felt is unreadable,
+            so it opens as a full sheet over the table instead — one row per
+            player, Play hand at the bottom. */}
+        {meldVisible && narrow && (
+          <div className="table-sheet meld-sheet">
+            <div className="sheet-title">Meld</div>
+            <div className="sheet-body">
+              {sheetSeats.map((seat) => {
+                const cards = meldCardsFor(seat);
+                return (
+                  <div key={`msheet-${seat}`} className="sheet-row">
+                    <div className="sheet-row-head">
+                      <span className="team-dot" style={{ background: TEAM_COLORS[mode.teams[seat]] }} />
+                      {seat === 0 ? 'You' : names[seat]}
+                      <span className="sheet-total">{state.melds[seat]?.total ?? 0}</span>
+                    </div>
+                    {cards.length > 0 && (
+                      <div className="sheet-cards">
+                        {cards.map((c) => <CardView key={c.id} card={c} size="mid" />)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="bid-controls sheet-actions">
+              <button className="btn btn-gold" onClick={() => dispatch({ type: 'CONTINUE' })}>
+                Play hand
+              </button>
+              {state.bidWinner === 0 && (
+                <button className="btn btn-muted" onClick={() => dispatch({ type: 'THROW_IN', seat: 0 })}>
+                  Go set (−{state.highBid})
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Trick */}
         <div className="trick-area">
@@ -568,17 +626,13 @@ export function GameTable({ state, names, dispatch }: Props) {
           </div>
         )}
 
-        {/* End of hand: everyone's cards from the start of play, face up.
-            Portrait phones stack the rows down the center instead of
-            spreading them to the seats. */}
-        {isReview && positions.map(([sx, sy], seat) => {
+        {/* End of hand: everyone's cards from the start of play, face up. */}
+        {isReview && !narrow && positions.map(([sx, sy], seat) => {
           if (seat === 0) return null;
           const cards = sortHand(state.playHands[seat] ?? [], state.trump);
           if (cards.length === 0) return null;
-          const rx = narrow ? 50 : sx + (50 - sx) * (mode.players === 6 ? 0.2 : 0.52);
-          const ry = narrow
-            ? 15 + (seat - 1) * (mode.players >= 5 ? 12.5 : 15)
-            : sy + (47 - sy) * 0.6;
+          const rx = sx + (50 - sx) * (mode.players === 6 ? 0.2 : 0.52);
+          const ry = sy + (47 - sy) * 0.6;
           return (
             <div key={`review-${seat}`} className="review-row" style={{ left: `${rx}%`, top: `${ry}%` }}>
               <span className="review-name">{names[seat]}</span>
@@ -588,7 +642,7 @@ export function GameTable({ state, names, dispatch }: Props) {
             </div>
           );
         })}
-        {isReview && (
+        {isReview && !narrow && (
           <div className="action-panel review-panel">
             <div className="panel-label">
               {state.claimedBy !== null
@@ -598,6 +652,41 @@ export function GameTable({ state, names, dispatch }: Props) {
             <button className="btn btn-gold" onClick={() => dispatch({ type: 'CONTINUE' })}>
               Show the score
             </button>
+          </div>
+        )}
+
+        {/* Portrait phones: the review opens as a full sheet, every hand
+            (yours included) listed by player. */}
+        {isReview && narrow && (
+          <div className="table-sheet review-sheet">
+            <div className="sheet-title">The hands, as played</div>
+            {state.claimedBy !== null && (
+              <div className="sheet-sub">
+                {state.claimedBy === 0 ? 'You take' : `${names[state.claimedBy]} takes`} the rest of the tricks
+              </div>
+            )}
+            <div className="sheet-body">
+              {sheetSeats.map((seat) => {
+                const cards = sortHand(state.playHands[seat] ?? [], state.trump);
+                if (cards.length === 0) return null;
+                return (
+                  <div key={`rsheet-${seat}`} className="sheet-row">
+                    <div className="sheet-row-head">
+                      <span className="team-dot" style={{ background: TEAM_COLORS[mode.teams[seat]] }} />
+                      {seat === 0 ? 'You' : names[seat]}
+                    </div>
+                    <div className="sheet-cards">
+                      {cards.map((c) => <CardView key={c.id} card={c} size="small" />)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="bid-controls sheet-actions">
+              <button className="btn btn-gold" onClick={() => dispatch({ type: 'CONTINUE' })}>
+                Show the score
+              </button>
+            </div>
           </div>
         )}
 
@@ -621,6 +710,12 @@ export function GameTable({ state, names, dispatch }: Props) {
         )}
         {humanNeedsPick && (
           <div className="pass-tray">
+            {/* Trump reminder: passing to the winner, you didn't name it */}
+            {state.phase === 'pass1' && state.trump && (
+              <span className={`tray-trump ${isRed(state.trump) ? 'suit-red' : ''}`}>
+                {SUIT_SYMBOL[state.trump]}
+              </span>
+            )}
             <div className="tray-label">
               {state.phase === 'discard'
                 ? `Bury ${pickCount} cards`
@@ -646,7 +741,7 @@ export function GameTable({ state, names, dispatch }: Props) {
             </button>
           </div>
         )}
-        {state.phase === 'meld' && !returnPending && (
+        {state.phase === 'meld' && !returnPending && !narrow && (
           <div className="action-panel meld-panel">
             <div className="bid-controls">
               <button className="btn btn-gold" onClick={() => dispatch({ type: 'CONTINUE' })}>

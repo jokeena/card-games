@@ -256,18 +256,19 @@ function pickPlay(state: GameState, seat: number): Card {
   const byPowerAsc = [...legal].sort((a, b) => RANK_POWER[a.rank] - RANK_POWER[b.rank]);
   const trumpIdx = SUITS.indexOf(trump);
 
+  // Count every card this seat has legitimately seen: captured piles, the
+  // current trick, its own hand, and — for the bid winner only — its own
+  // buried kitty cards. (The original kitty was flipped publicly, but cards
+  // the bidder KEPT are still live, so only the bidder may count the burial.)
+  const seen = new Map<string, number>();
+  const note = (c: Card) => seen.set(`${c.suit}${c.rank}`, (seen.get(`${c.suit}${c.rank}`) ?? 0) + 1);
+  state.captured.forEach((pile) => pile.forEach(note));
+  state.trick.forEach((p) => note(p.card));
+  hand.forEach(note);
+  if (seat === state.bidWinner) state.discard.forEach(note);
+
   // Leading a trick.
   if (state.trick.length === 0) {
-    // Count every card this seat has legitimately seen: captured piles, its
-    // own hand, and — for the bid winner only — its own buried kitty cards.
-    // (The original kitty was flipped publicly, but cards the bidder KEPT are
-    // still live, so only the bidder may count the burial.)
-    const seen = new Map<string, number>();
-    const note = (c: Card) => seen.set(`${c.suit}${c.rank}`, (seen.get(`${c.suit}${c.rank}`) ?? 0) + 1);
-    state.captured.forEach((pile) => pile.forEach(note));
-    hand.forEach(note);
-    if (seat === state.bidWinner) state.discard.forEach(note);
-
     const myTrumps = legal.filter((c) => c.suit === trump)
       .sort((a, b) => RANK_POWER[b.rank] - RANK_POWER[a.rank]);
     const topTrumpIsBoss = myTrumps.length > 0 && (myTrumps[0].rank === 'A' ||
@@ -358,9 +359,25 @@ function pickPlay(state: GameState, seat: number): Card {
   const nonWinners = legal.filter((c) => !winners.some((w) => w.id === c.id));
 
   if (winners.length > 0) {
-    // Must-beat rules leave no choice about winning — just win as cheaply
-    // as possible (equal-power counters: the K goes before the 10).
-    return winners.sort((a, b) => RANK_POWER[a.rank] - RANK_POWER[b.rank])[0];
+    // Must-beat rules leave no choice about winning — win as cheaply as
+    // possible (equal-power counters: the K goes before the 10)…
+    const byCheap = winners.sort((a, b) => RANK_POWER[a.rank] - RANK_POWER[b.rank]);
+    // …unless an opponent still to play can overtake the cheap winner. Then
+    // escalate to the cheapest follow that nothing outstanding beats (ties
+    // lose, so the second ace never takes the first): a K under a live ace
+    // just hands the trick away when the A would have locked it up.
+    const played = new Set(state.trick.map((p) => p.seat));
+    played.add(seat);
+    const oppBehind = Array.from({ length: mode.players }, (_, s) => s)
+      .some((s) => !played.has(s) && !isFriendly(s));
+    const led = state.trick[0].card.suit;
+    const beatable = (c: Card) => RANKS.some((r) =>
+      RANK_POWER[r] > RANK_POWER[c.rank] && (seen.get(`${c.suit}${r}`) ?? 0) < 2);
+    if (oppBehind && byCheap[0].suit === led && beatable(byCheap[0])) {
+      const locked = byCheap.find((c) => c.suit === led && !beatable(c));
+      if (locked) return locked;
+    }
+    return byCheap[0];
   }
 
   // Can't win. Decide between smearing a counter to a friendly winner and

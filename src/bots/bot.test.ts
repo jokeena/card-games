@@ -110,6 +110,31 @@ describe('partner pass to bid winner', () => {
     expect(botAction(withBoss, 2)).toEqual({ type: 'PLAY', seat: 2, cardId: trumpAce.id });
   });
 
+  it('takes with the ace, not the king, while the other ace is live behind', () => {
+    // J♦ led, Q♦ played; the bot holds A-K of diamonds and an opponent still
+    // plays after it. The K can be overtaken by the outstanding A♦ — the
+    // bot's own A wins outright (ties lose), so it must go up with the ace.
+    const mode = MODES.find((m) => m.id === 'p4np')!;
+    const base = newGame(mode);
+    const ace = c('D', 'A');
+    const state: GameState = {
+      ...base,
+      phase: 'play',
+      trump: 'H',
+      bidWinner: 3,
+      highBid: 25,
+      turn: 1,
+      trick: [{ seat: 3, card: c('D', 'J') }, { seat: 0, card: c('D', 'Q') }],
+      hands: [
+        [c('C', '9')],
+        [ace, c('D', 'K'), c('C', 'Q'), c('S', '9')],
+        [c('D', 'A')], // the live ace, behind the bot and unfriendly
+        [c('S', 'J')],
+      ],
+    };
+    expect(botAction(state, 1)).toEqual({ type: 'PLAY', seat: 1, cardId: ace.id });
+  });
+
   it('cashes a 10 that became boss after both aces fell', () => {
     const mode = MODES.find((m) => m.id === 'p4np')!;
     const base = newGame(mode);

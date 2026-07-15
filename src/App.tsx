@@ -247,6 +247,12 @@ function Game({ mode, save, onExit }: {
         <button className="bar-btn" disabled={!canUndo} onClick={() => dispatch({ type: 'UNDO' })}>
           ↩ Undo
         </button>
+        {/* Phones only (CSS): the bid lives up here, off the scoreboard */}
+        {state.highSeat >= 0 && state.phase !== 'gameOver' && (
+          <span className="bar-bid-top">
+            Bid {state.highBid} — {names[state.bidWinner >= 0 ? state.bidWinner : state.highSeat]}
+          </span>
+        )}
         <span className="bar-title">{mode.label}</span>
         <span className="bar-spacer" />
         {state.trump && state.phase !== 'gameOver' && (
@@ -254,7 +260,8 @@ function Game({ mode, save, onExit }: {
             <span className={`bar-trump-sym ${isRed(state.trump) ? 'suit-red' : ''}`}>
               {SUIT_SYMBOL[state.trump]}
             </span>
-            {SUIT_NAME[state.trump]} trump
+            {/* Phones drop the words (CSS) — the symbol chip alone marks trump */}
+            <span className="bar-trump-name">{SUIT_NAME[state.trump]} trump</span>
             {state.bidWinner >= 0 && (
               <span className="bar-bid">
                 {names[state.bidWinner]} bid {state.highBid}
