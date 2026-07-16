@@ -110,7 +110,11 @@ function histReducer(h: Hist, action: HistAction): Hist {
 /** ms of "thinking" per phase — a beat to read each pass, play measured. */
 function botDelay(state: GameState): number {
   if (state.phase === 'order1' || state.phase === 'order2') return 800;
-  if (state.phase === 'play') return 380;
+  if (state.phase === 'play') {
+    // Opening lead right after a burial waits for the flight to land.
+    if (state.tricksPlayed === 0 && state.trick.length === 0 && state.discard) return 1250;
+    return 380;
+  }
   return 950;
 }
 

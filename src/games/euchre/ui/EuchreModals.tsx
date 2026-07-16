@@ -21,7 +21,7 @@ function HandEndModal({ state, names, onContinue }: Pick<Props, 'state' | 'names
   const title = r.euchred
     ? (r.makers === myTeam ? (r.maker === 0 ? 'You were euched!' : `${makerName} was euched!`) : 'Euched them!')
     : r.march
-      ? (r.alone ? `${makerName} march${r.maker === 0 ? '' : 'es'} alone!` : 'A march — all five tricks')
+      ? `${makerName} took all 5 tricks${r.alone ? ' alone' : ''}`
       : (r.maker === 0 ? 'You made it' : `${makerName} made it`);
   return (
     <div className="modal-backdrop">
