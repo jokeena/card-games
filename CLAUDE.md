@@ -36,10 +36,11 @@ Browser-only card games vs bots (currently Pinochle; Euchre planned). No backend
 - `PinochleApp.tsx` — glue. `useReducer` over a history wrapper (`histReducer`: undo to human-decision points) around `gameReducer`; a single `useEffect` drives bots: whenever `actorFor(state)` is a non-zero seat, it dispatches that bot's action after a delay. Bot throw-in strategy (conceding a hopeless bid at meld), saved-game persistence, and lifetime stats (localStorage) live here, not in `bot.ts`. **Seat 0 is always the human.**
 - `ui/` — `GameTable.tsx` (table, hands, bid/discard/pass controls), `Modals.tsx` (meld reveal, hand summary, game over).
 
-**`src/games/euchre/`** — standard 4-player partnership euchre (engine built; bots and UI pending):
+**`src/games/euchre/`** — standard 4-player partnership euchre (engine + bots built; UI pending):
 - `engine/types.ts` — re-exports `src/cards/types` plus bower logic: `effectiveSuit` (the left bower IS trump — for following suit, voids, everything), `trickPower`, `isBlackJack`.
 - `engine/tricks.ts` — follow-suit-only legality (no must-beat/must-trump, unlike pinochle) and trick winner.
 - `engine/game.ts` — phase machine `dealerDraw → order1 → (discard | order2) → play ⇄ trickEnd → handEnd → gameOver`. `newGame(rng)` runs the opening ritual: cards dealt around until the first **black** jack; that seat deals, and the sequence is kept in `drawCards` for the UI to animate. Stick the dealer (round-2 PASS by the dealer is rejected). Going alone: partner's seat is `inactive`, tricks complete with 3 cards; if the dealer is the one sitting out, the turn card stays with the kitty (no pickup/discard). Scoring: 1 / 2 (march) / 4 (lone march) / 2 to defenders on a euchre; first team to 10.
+- `bots/bot.ts` — pure `botAction(state, seat)` mirroring the pinochle bot contract. Hand evaluation in "trump points" (`handScore`; ~5.5 calls, ~8.5 goes alone); play tracks boss cards from public info only (`played`, the upcard's fate, own hand). Tests: `bot.test.ts` (decisions) + `bot.sim.test.ts` (120 seeded self-play games).
 - House flavor to build in the UI: each team's score shown with two 5s on the felt (0 = crossed face down; 1–4 = face-down card slid to expose N pips; 5 = fully exposed; 6–9 = both face up, top full 5 + N−5 pips; 10 = both face up side by side). Red 5s for one team, black for the other (conjured — the 24-card deck has no 5s).
 
 Do not generalize either game's engine to serve the other (bowers break pinochle's trick-legality and rank assumptions).

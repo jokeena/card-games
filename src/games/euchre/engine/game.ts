@@ -46,6 +46,12 @@ export interface GameState {
   turnedDown: Suit | null;
   /** Dealer's face-down burial after picking up the turn card. */
   discard: Card | null;
+  /** The original turned card, kept all hand — public knowledge. */
+  upcard: Card | null;
+  /** True once the dealer took the turn card into hand (it's live until played). */
+  pickedUp: boolean;
+  /** Cards from completed tricks, in play order — public knowledge for bots and UI. */
+  played: Card[];
 
   turn: number;
   trump: Suit | null;
@@ -105,6 +111,9 @@ function freshHand(state: GameState, dealer: number, rng: () => number = Math.ra
     turnCard: kitty[0],
     turnedDown: null,
     discard: null,
+    upcard: kitty[0],
+    pickedUp: false,
+    played: [],
     turn: (dealer + 1) % PLAYERS,
     trump: null,
     maker: -1,
@@ -148,6 +157,9 @@ export function newGame(rng: () => number = Math.random): GameState {
     turnCard: null,
     turnedDown: null,
     discard: null,
+    upcard: null,
+    pickedUp: false,
+    played: [],
     turn: 0,
     trump: null,
     maker: -1,
@@ -234,6 +246,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         ...next,
         hands,
         turnCard: null,
+        pickedUp: true,
         phase: 'discard',
         turn: state.dealer,
       };
@@ -324,6 +337,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         trickWinner: winnerSeat,
         tricksPlayed: state.tricksPlayed + 1,
         tricksTaken,
+        played: [...state.played, ...trick.map((t) => t.card)],
       };
     }
 
