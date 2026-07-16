@@ -22,6 +22,7 @@ function st(over: Partial<GameState>): GameState {
     played: [],
     turn: 0,
     trump: 'S',
+    noTrump: false,
     maker: 0,
     alone: false,
     inactive: null,
@@ -30,6 +31,7 @@ function st(over: Partial<GameState>): GameState {
     trickWinner: -1,
     tricksPlayed: 0,
     tricksTaken: [0, 0],
+    playHands: [],
     handResult: null,
     winnerTeam: null,
     log: [],
@@ -61,6 +63,18 @@ describe('ordering decisions', () => {
     const hand = [c('H', '9'), c('D', '10'), c('C', 'Q'), c('S', '9'), c('H', '10')];
     const a = botAction(order1(hand, 1, 3, c('S', 'A')), 1);
     expect(a).toEqual({ type: 'PASS', seat: 1 });
+  });
+
+  it('calls No Trump on an ace-heavy hand — but only when the house rule is on', () => {
+    const aces = [c('S', 'A'), c('H', 'A'), c('D', 'A'), c('C', 'A'), c('S', 'K')];
+    const base = st({
+      phase: 'order2', turnedDown: 'S', trump: null, maker: -1, turn: 1, dealer: 3,
+      hands: [[], [], [], []].map((h, i) => (i === 1 ? aces : h)),
+    });
+    const withRule = botAction(base, 1, { noTrump: true });
+    expect(withRule).toEqual({ type: 'NAME_TRUMP', seat: 1, suit: 'NT', alone: true });
+    // Without the rule, bare aces don't make a 5.5-point suit call: pass.
+    expect(botAction(base, 1)).toEqual({ type: 'PASS', seat: 1 });
   });
 
   it('round 2: passes junk unless stuck as dealer, who names their least-bad suit', () => {
@@ -103,6 +117,22 @@ describe('card play', () => {
       maker: 0, turn: 0,
     });
     expect(botAction(s, 0)).toEqual({ type: 'PLAY', seat: 0, cardId: c('S', 'J').id });
+  });
+
+  it('cashes a guaranteed trump before a weak off-suit card, even with no trump left to pull', () => {
+    // John's loner: J-J-A-K of trump + off 9. After J, J, A pull every spade,
+    // the K is a lock — bank it and hope the discards make the 9 good.
+    const s = st({
+      hands: [[c('S', 'K'), c('H', '9')], [], [], []],
+      maker: 0, alone: true, inactive: 2, turn: 0,
+      played: [
+        c('S', 'J'), c('C', 'J'), c('S', 'A'),
+        c('S', 'Q'), c('S', '10'), c('S', '9'),
+        c('D', 'A'), c('D', 'K'), c('D', 'Q'),
+      ],
+      tricksPlayed: 3, tricksTaken: [3, 0],
+    });
+    expect(botAction(s, 0)).toEqual({ type: 'PLAY', seat: 0, cardId: c('S', 'K').id });
   });
 
   it('sloughs the cheapest card when partner has the trick locked', () => {

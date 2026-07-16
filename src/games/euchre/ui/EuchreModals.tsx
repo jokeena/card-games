@@ -19,7 +19,7 @@ function HandEndModal({ state, names, onContinue }: Pick<Props, 'state' | 'names
   const myTeam = TEAM_OF[0];
   const makerName = r.maker === 0 ? 'You' : names[r.maker];
   const title = r.euchred
-    ? (r.makers === myTeam ? (r.maker === 0 ? 'You were euchred!' : `${makerName} was euchred!`) : 'Euchred them!')
+    ? (r.makers === myTeam ? (r.maker === 0 ? 'You were euched!' : `${makerName} was euched!`) : 'Euched them!')
     : r.march
       ? (r.alone ? `${makerName} march${r.maker === 0 ? '' : 'es'} alone!` : 'A march — all five tricks')
       : (r.maker === 0 ? 'You made it' : `${makerName} made it`);
@@ -28,7 +28,7 @@ function HandEndModal({ state, names, onContinue }: Pick<Props, 'state' | 'names
       <div className="modal">
         <h2 className={r.deltas[myTeam] > 0 ? 'result-made' : 'result-set'}>{title}</h2>
         <div className="modal-bidline">
-          {makerName} called {r.alone ? 'alone ' : ''}and took {r.makerTricks} trick{r.makerTricks === 1 ? '' : 's'}
+          {makerName} called {r.noTrump ? 'no trump ' : ''}{r.alone ? 'alone ' : ''}and took {r.makerTricks} trick{r.makerTricks === 1 ? '' : 's'}
         </div>
         <table className="result-table">
           <thead>
@@ -101,6 +101,7 @@ export function EuchreRulesModal({ onClose }: { onClose: () => void }) {
               <li>The left bower <i>is</i> trump — it can't follow its printed suit</li>
               <li>Follow the led suit if you can; void, play anything</li>
               <li>Left of the dealer leads the first trick</li>
+              <li>House option: No Trump — aces high, no bowers, nothing ruffs</li>
             </ul>
           </section>
           <section>

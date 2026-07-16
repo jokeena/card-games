@@ -11,18 +11,18 @@ function lcg(seed: number): () => number {
   };
 }
 
-function simulate(rng: () => number): { final: GameState; results: HandResult[] } {
+function simulate(rng: () => number, noTrump = false): { final: GameState; results: HandResult[] } {
   let s = newGame(rng);
   const results: HandResult[] = [];
   let guard = 0;
   while (s.phase !== 'gameOver') {
     if (guard++ > 5000) throw new Error(`game did not terminate (phase ${s.phase}, hand ${s.handNumber})`);
-    if (s.phase === 'dealerDraw' || s.phase === 'trickEnd' || s.phase === 'handEnd') {
+    if (s.phase === 'dealerDraw' || s.phase === 'trickEnd' || s.phase === 'handReview' || s.phase === 'handEnd') {
       if (s.phase === 'handEnd' && s.handResult) results.push(s.handResult);
       s = gameReducer(s, { type: 'CONTINUE' });
       continue;
     }
-    const action = botAction(s, s.turn);
+    const action = botAction(s, s.turn, { noTrump });
     if (!action) throw new Error(`bot returned null in phase ${s.phase}, seat ${s.turn}`);
     const next = gameReducer(s, action);
     if (next === s) throw new Error(`bot chose an illegal action: ${JSON.stringify(action)}`);
@@ -56,5 +56,15 @@ describe('bot self-play', () => {
     expect(madeRate).toBeGreaterThan(0.5);
     expect(madeRate).toBeLessThan(0.98);
     expect(lones).toBeGreaterThan(0);
+  });
+
+  it('completes 40 games with the No Trump house rule on, and someone calls it', () => {
+    let ntHands = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      const { final, results } = simulate(lcg(seed * 15013), true);
+      expect(final.winnerTeam).not.toBeNull();
+      ntHands += results.filter((r) => r.noTrump).length;
+    }
+    expect(ntHands).toBeGreaterThan(0);
   });
 });

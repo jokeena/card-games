@@ -15,12 +15,14 @@ export type Phase =
   | 'discard'    // dealer picked up the turn card, buries one face down
   | 'play'
   | 'trickEnd'   // completed trick shown, waiting for continue
+  | 'handReview' // everyone's hands + the kitty face up, waiting for continue
   | 'handEnd'    // hand summary shown, waiting for continue
   | 'gameOver';
 
 export interface HandResult {
   makers: number;      // team that named trump
   maker: number;       // seat that named it
+  noTrump: boolean;
   alone: boolean;
   makerTricks: number;
   euchred: boolean;
@@ -54,7 +56,10 @@ export interface GameState {
   played: Card[];
 
   turn: number;
+  /** Named trump; null both before naming and under a No Trump call. */
   trump: Suit | null;
+  /** True once someone calls No Trump: aces high, no bowers, nothing ruffs. */
+  noTrump: boolean;
   maker: number;       // seat, -1 until trump is named
   alone: boolean;
   /** Seat sitting out (loner's partner), or null. */
@@ -71,6 +76,8 @@ export interface GameState {
   trickWinner: number;
   tricksPlayed: number;
   tricksTaken: number[]; // per team
+  /** Each hand as it stood when play began — for the end-of-hand reveal. */
+  playHands: Card[][];
 
   handResult: HandResult | null;
   winnerTeam: number | null;
@@ -79,7 +86,7 @@ export interface GameState {
 
 export type GameAction =
   | { type: 'ORDER_UP'; seat: number; alone: boolean }
-  | { type: 'NAME_TRUMP'; seat: number; suit: Suit; alone: boolean }
+  | { type: 'NAME_TRUMP'; seat: number; suit: Suit | 'NT'; alone: boolean }
   | { type: 'PASS'; seat: number }
   | { type: 'DISCARD'; seat: number; cardId: string }
   | { type: 'PLAY'; seat: number; cardId: string }
@@ -116,6 +123,7 @@ function freshHand(state: GameState, dealer: number, rng: () => number = Math.ra
     played: [],
     turn: (dealer + 1) % PLAYERS,
     trump: null,
+    noTrump: false,
     maker: -1,
     alone: false,
     inactive: null,
@@ -124,6 +132,7 @@ function freshHand(state: GameState, dealer: number, rng: () => number = Math.ra
     trickWinner: -1,
     tricksPlayed: 0,
     tricksTaken: [0, 0],
+    playHands: [],
     handResult: null,
     log: [...state.log.slice(-60), `— Hand ${state.handNumber + 1} —`],
   };
@@ -162,6 +171,7 @@ export function newGame(rng: () => number = Math.random): GameState {
     played: [],
     turn: 0,
     trump: null,
+    noTrump: false,
     maker: -1,
     alone: false,
     inactive: null,
@@ -170,6 +180,7 @@ export function newGame(rng: () => number = Math.random): GameState {
     trickWinner: -1,
     tricksPlayed: 0,
     tricksTaken: [],
+    playHands: [],
     handResult: null,
     winnerTeam: null,
     log: [],
@@ -178,20 +189,28 @@ export function newGame(rng: () => number = Math.random): GameState {
 
 /** Trump is set; play begins left of the dealer (skipping a sitting-out seat). */
 function enterPlay(state: GameState): GameState {
-  return { ...state, phase: 'play', trick: [], turn: nextActive(state, state.dealer) };
+  return {
+    ...state,
+    phase: 'play',
+    trick: [],
+    turn: nextActive(state, state.dealer),
+    playHands: state.hands.map((h) => [...h]),
+  };
 }
 
-/** Trump named by `seat`: record makers and, if alone, sit the partner out. */
-function setTrump(state: GameState, seat: number, suit: Suit, alone: boolean): GameState {
+/** Trump named by `seat` (null = No Trump): record makers; alone sits the partner out. */
+function setTrump(state: GameState, seat: number, suit: Suit | null, alone: boolean): GameState {
+  const called = suit === null ? 'No Trump — aces high' : SUIT_NAME[suit];
   return {
     ...state,
     trump: suit,
+    noTrump: suit === null,
     maker: seat,
     alone,
     inactive: alone ? partnerOf(seat) : null,
     log: log(state, alone
-      ? `Seat ${seat} makes it ${SUIT_NAME[suit]} — alone!`
-      : `Trump is ${SUIT_NAME[suit]} (seat ${seat}).`),
+      ? `Seat ${seat} makes it ${called} — alone!`
+      : `Seat ${seat} makes it ${called}.`),
   };
 }
 
@@ -214,7 +233,10 @@ function scoreHand(state: GameState): GameState {
     ...state,
     scores,
     phase: 'handEnd',
-    handResult: { makers, maker: state.maker, alone: state.alone, makerTricks, euchred, march, deltas },
+    handResult: {
+      makers, maker: state.maker, noTrump: state.noTrump, alone: state.alone,
+      makerTricks, euchred, march, deltas,
+    },
     winnerTeam,
     log: log(state, euchred
       ? `Euchred! Defenders score 2.`
@@ -255,7 +277,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'NAME_TRUMP': {
       if (state.phase !== 'order2' || action.seat !== state.turn) return state;
       if (action.suit === state.turnedDown) return state;
-      return enterPlay(setTrump(state, action.seat, action.suit, action.alone));
+      // 'NT' is the No Trump house call: aces high, no bowers, nothing ruffs.
+      const suit = action.suit === 'NT' ? null : action.suit;
+      return enterPlay(setTrump(state, action.seat, suit, action.alone));
     }
 
     case 'PASS': {
@@ -303,7 +327,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const hand = state.hands[action.seat];
       const card = hand.find((c) => c.id === action.cardId);
       if (!card) return state;
-      const legal = legalPlays(hand, state.trick, state.trump!);
+      const legal = legalPlays(hand, state.trick, state.trump);
       if (!legal.some((c) => c.id === card.id)) return state;
 
       const hands = state.hands.map((h, i) =>
@@ -312,8 +336,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
       let voids = state.voids;
       if (state.trick.length > 0) {
-        const led = effectiveSuit(state.trick[0].card, state.trump!);
-        if (effectiveSuit(card, state.trump!) !== led) {
+        const led = effectiveSuit(state.trick[0].card, state.trump);
+        if (effectiveSuit(card, state.trump) !== led) {
           voids = state.voids.map((v) => [...v]);
           voids[action.seat][SUITS.indexOf(led)] = true;
         }
@@ -323,7 +347,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         return { ...state, hands, trick, voids, turn: nextActive(state, action.seat) };
       }
 
-      const wi = winningIndex(trick, state.trump!);
+      const wi = winningIndex(trick, state.trump);
       const winnerSeat = trick[wi].seat;
       const tricksTaken = [...state.tricksTaken];
       tricksTaken[TEAM_OF[winnerSeat]] += 1;
@@ -346,9 +370,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         return freshHand({ ...state, log: log(state, `Seat ${state.dealer} draws the black jack and deals.`) }, state.dealer);
       }
       if (state.phase === 'trickEnd') {
-        if (state.tricksPlayed === 5) return scoreHand(state);
+        if (state.tricksPlayed === 5) return { ...state, phase: 'handReview', trick: [] };
         return { ...state, phase: 'play', trick: [], turn: state.trickWinner };
       }
+      if (state.phase === 'handReview') return scoreHand(state);
       if (state.phase === 'handEnd') {
         if (state.winnerTeam !== null) return { ...state, phase: 'gameOver' };
         return freshHand(state, (state.dealer + 1) % PLAYERS);

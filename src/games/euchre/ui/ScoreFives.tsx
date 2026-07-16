@@ -7,8 +7,10 @@
  *  - 6–9  both face up: the top 5 fully visible, slid to expose N−5 pips
  *  - 10   both fully face up side by side
  * Red 5s for one team, black for the other (conjured — the euchre deck has
- * no 5s). The pips run down the card in a staggered zigzag, one per row,
- * so a straight slide of the cover exposes exactly N pips for every N.
+ * no 5s). The face is a proper bicycle-style 5: two pips top, one center,
+ * two bottom. The cover rotates and slides the way it does on a real table:
+ * laid at 45° over everything but the top-left pip for 1, crosswise for
+ * 2 and 3, and 45° over just the bottom-right pip for 4.
  */
 
 interface Props {
@@ -16,15 +18,19 @@ interface Props {
   color: 'red' | 'black';
 }
 
-/** Cover transforms for "expose N pips of the card underneath", N = 1–4. */
+/**
+ * Cover transforms for "expose N pips of the card underneath", N = 1–4.
+ * Positions are worked out against the pip grid (rows at 20/50/80% of a
+ * 44×62 card) so each pose covers exactly the pips it should.
+ */
 const COVER_POSE: Record<number, string> = {
-  1: 'translate(2%, 24%) rotate(2deg)',
-  2: 'translate(-2%, 41%) rotate(-2deg)',
-  3: 'translate(2%, 58%) rotate(2deg)',
-  4: 'translate(-2%, 75%) rotate(-2deg)',
+  1: 'translate(41%, 3%) rotate(45deg) scale(1.15)',
+  2: 'translate(0, 16%) rotate(90deg)',
+  3: 'translate(0, 44%) rotate(90deg)',
+  4: 'translate(50%, 50%) rotate(45deg) scale(1.15)',
 };
 
-const PIPS: [number, number][] = [[32, 16], [68, 31], [50, 48], [32, 65], [68, 82]];
+const PIPS: [number, number][] = [[30, 20], [70, 20], [50, 50], [30, 80], [70, 80]];
 
 function FiveFace({ color }: { color: 'red' | 'black' }) {
   const sym = color === 'red' ? '♥' : '♠';
@@ -75,6 +81,21 @@ export function ScoreFives({ score, color }: Props) {
       <div className={`${cls} ${top.face ? '' : 'five-back'}`} style={top.style}>
         {top.face && <FiveFace color={color} />}
       </div>
+    </div>
+  );
+}
+
+/** Dev harness (#fives on the landing page): every score state side by side. */
+export function FivesGallery() {
+  return (
+    <div className="fives-gallery">
+      {Array.from({ length: 11 }).map((_, n) => (
+        <div key={n} className="fives-gallery-item">
+          <div className="fives-gallery-label">{n}</div>
+          <ScoreFives score={n} color="red" />
+          <ScoreFives score={n} color="black" />
+        </div>
+      ))}
     </div>
   );
 }

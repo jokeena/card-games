@@ -2,21 +2,20 @@ import { useEffect, useReducer, useRef, useState } from 'react';
 import { botAction } from './bots/bot';
 import { GameAction, GameState, TEAM_OF, gameReducer, newGame } from './engine/game';
 import { EuchreModals, EuchreRulesModal } from './ui/EuchreModals';
-import { EuchreTable, teamName } from './ui/EuchreTable';
-import { ScoreFives } from './ui/ScoreFives';
+import { EuchreTable } from './ui/EuchreTable';
 import { SUIT_NAME, SUIT_SYMBOL, isRed } from './engine/types';
 
 /* ---------- Saved game & lifetime stats (localStorage) ---------- */
 
 const SAVE_KEY = 'euchre-save';
-const STATS_KEY = 'euchre-stats';
+export const EUCHRE_STATS_KEY = 'euchre-stats';
 
 interface SaveData {
   state: GameState;
   names: string[];
 }
 
-function loadSave(): SaveData | null {
+export function loadEuchreSave(): SaveData | null {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
@@ -28,7 +27,7 @@ function loadSave(): SaveData | null {
   }
 }
 
-interface Stats {
+export interface EuchreStats {
   games: number;
   wins: number;
   hands: number;
@@ -40,22 +39,22 @@ interface Stats {
   loneMarches: number;
 }
 
-const emptyStats = (): Stats => ({
+export const emptyEuchreStats = (): EuchreStats => ({
   games: 0, wins: 0, hands: 0, calls: 0, made: 0, set: 0, euchres: 0, loners: 0, loneMarches: 0,
 });
 
-function loadStats(): Stats {
+export function loadEuchreStats(): EuchreStats {
   try {
-    return { ...emptyStats(), ...JSON.parse(localStorage.getItem(STATS_KEY) ?? '{}') };
+    return { ...emptyEuchreStats(), ...JSON.parse(localStorage.getItem(EUCHRE_STATS_KEY) ?? '{}') };
   } catch {
-    return emptyStats();
+    return emptyEuchreStats();
   }
 }
 
-function updateStats(apply: (s: Stats) => void) {
-  const stats = loadStats();
+function updateStats(apply: (s: EuchreStats) => void) {
+  const stats = loadEuchreStats();
   apply(stats);
-  localStorage.setItem(STATS_KEY, JSON.stringify(stats));
+  localStorage.setItem(EUCHRE_STATS_KEY, JSON.stringify(stats));
 }
 
 const NAME_POOL = ['Audrey', 'James', 'Lorraine', 'Ella', 'Reagan', 'John', 'Sean', 'Cha Cha', 'Carl', 'Blake', 'Jeff'];
@@ -84,7 +83,7 @@ function actorFor(state: GameState): number | null {
 
 /** States the game sits in waiting for the human — undo jump targets. */
 function isHumanDecision(s: GameState): boolean {
-  return actorFor(s) === 0 || s.phase === 'handEnd';
+  return actorFor(s) === 0 || s.phase === 'handReview' || s.phase === 'handEnd';
 }
 
 interface Hist {
@@ -108,21 +107,33 @@ function histReducer(h: Hist, action: HistAction): Hist {
   return { present: next, past: [...h.past.slice(-300), h.present] };
 }
 
-/** ms of "thinking" per phase — ordering snappy, play measured. */
+/** ms of "thinking" per phase — a beat to read each pass, play measured. */
 function botDelay(state: GameState): number {
-  if (state.phase === 'order1' || state.phase === 'order2') return 480;
+  if (state.phase === 'order1' || state.phase === 'order2') return 800;
   if (state.phase === 'play') return 380;
-  return 600;
+  return 950;
 }
 
-function Game({ save, onExit }: { save: SaveData | null; onExit: () => void }) {
+/* The dealt note owns the bar's center during the order rounds; once trump
+   is named the (also-centered) trump chip takes over. */
+const ORDERING = new Set(['order1', 'order2']);
+
+/** No menu: clicking Euchre resumes the saved game or deals a fresh one. */
+export function EuchreApp({ onExit }: { onExit: () => void }) {
+  const [save] = useState<SaveData | null>(loadEuchreSave);
   const [hist, dispatch] = useReducer(
     histReducer, save,
     (sv: SaveData | null): Hist => ({ present: sv?.state ?? newGame(), past: [] }));
   const { present: state, past } = hist;
   const [showRules, setShowRules] = useState(false);
   const [names] = useState(() => save?.names ?? drawNames());
+  const [ntEnabled, setNtEnabled] = useState(() => localStorage.getItem('euchre-notrump') === '1');
   const canUndo = past.some(isHumanDecision);
+
+  const toggleNt = () => setNtEnabled((v) => {
+    localStorage.setItem('euchre-notrump', v ? '0' : '1');
+    return !v;
+  });
 
   // Persist after every change; clear and record the game when it ends.
   const gameRecorded = useRef(false);
@@ -176,12 +187,12 @@ function Game({ save, onExit }: { save: SaveData | null; onExit: () => void }) {
     const actor = actorFor(state);
     if (actor !== null && actor !== 0) {
       const t = setTimeout(() => {
-        const action = botAction(state, actor);
+        const action = botAction(state, actor, { noTrump: ntEnabled });
         if (action) dispatch(action);
       }, botDelay(state));
       return () => clearTimeout(t);
     }
-  }, [state]);
+  }, [state, ntEnabled]);
 
   return (
     <div className="game-root">
@@ -191,6 +202,9 @@ function Game({ save, onExit }: { save: SaveData | null; onExit: () => void }) {
           ↩ Undo
         </button>
         <span className="bar-title">Euchre</span>
+        {ORDERING.has(state.phase) && (
+          <span className="bar-dealt">{state.dealer === 0 ? 'You' : names[state.dealer]} dealt</span>
+        )}
         <span className="bar-spacer" />
         {state.trump && state.phase !== 'gameOver' && (
           <span className="bar-trump">
@@ -200,9 +214,17 @@ function Game({ save, onExit }: { save: SaveData | null; onExit: () => void }) {
             <span className="bar-trump-name">{SUIT_NAME[state.trump]} trump</span>
           </span>
         )}
+        {state.noTrump && state.phase !== 'gameOver' && (
+          <span className="bar-trump"><span className="bar-trump-name">No trump — aces high</span></span>
+        )}
+        <button className={`switch bar-switch ${ntEnabled ? 'switch-on' : ''}`} onClick={toggleNt}
+          role="switch" aria-checked={ntEnabled} title="House rule: allow calling No Trump in round 2">
+          <span className="switch-track"><span className="switch-knob" /></span>
+          No Trump
+        </button>
         <button className="bar-btn bar-btn-round" title="Rules" onClick={() => setShowRules(true)}>i</button>
       </header>
-      <EuchreTable state={state} names={names} dispatch={dispatch} />
+      <EuchreTable state={state} names={names} dispatch={dispatch} noTrumpRule={ntEnabled} />
       <EuchreModals
         state={state}
         names={names}
@@ -210,117 +232,6 @@ function Game({ save, onExit }: { save: SaveData | null; onExit: () => void }) {
         onNewGame={onExit}
       />
       {showRules && <EuchreRulesModal onClose={() => setShowRules(false)} />}
-    </div>
-  );
-}
-
-function StatsModal({ onClose }: { onClose: () => void }) {
-  const [stats, setStats] = useState<Stats>(loadStats);
-  const any = stats.games > 0 || stats.hands > 0;
-  return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Your record</h2>
-        {!any ? (
-          <p className="modal-note">No finished hands yet — go play one.</p>
-        ) : (
-          <table className="result-table stats-table">
-            <tbody>
-              <tr><td className="result-name">Games / won</td><td>{stats.games} / {stats.wins}</td></tr>
-              <tr><td className="result-name">Hands</td><td>{stats.hands}</td></tr>
-              <tr><td className="result-name">Your calls / made / set</td><td>{stats.calls} / {stats.made} / {stats.set}</td></tr>
-              <tr><td className="result-name">Times you euchred them</td><td>{stats.euchres}</td></tr>
-              <tr><td className="result-name">Loners / lone marches</td><td>{stats.loners} / {stats.loneMarches}</td></tr>
-            </tbody>
-          </table>
-        )}
-        <div className="bid-controls">
-          <button className="btn btn-gold" onClick={onClose}>Close</button>
-          {any && (
-            <button className="btn btn-muted"
-              onClick={() => { localStorage.removeItem(STATS_KEY); setStats(emptyStats()); }}>
-              Reset stats
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Dev harness: /#fives shows every score state for eyeballing the layout. */
-function FivesGallery() {
-  return (
-    <div className="fives-gallery">
-      {Array.from({ length: 11 }).map((_, n) => (
-        <div key={n} className="fives-gallery-item">
-          <div className="fives-gallery-label">{n}</div>
-          <ScoreFives score={n} color="red" />
-          <ScoreFives score={n} color="black" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-export function EuchreApp({ onExit }: { onExit: () => void }) {
-  const [playing, setPlaying] = useState(false);
-  const [gameKey, setGameKey] = useState(0);
-  const [save, setSave] = useState<SaveData | null>(loadSave);
-  const [resuming, setResuming] = useState(false);
-  const [showStats, setShowStats] = useState(false);
-
-  const start = (resume: boolean) => {
-    setResuming(resume);
-    setPlaying(true);
-    setGameKey((k) => k + 1);
-  };
-
-  if (playing) {
-    return (
-      <Game
-        key={gameKey}
-        save={resuming ? save : null}
-        onExit={() => { setPlaying(false); setSave(loadSave()); }}
-      />
-    );
-  }
-
-  if (typeof window !== 'undefined' && window.location.hash === '#fives') {
-    return <FivesGallery />;
-  }
-
-  return (
-    <div className="menu">
-      <div className="menu-card">
-        <button className="bar-btn menu-back" onClick={onExit}>← Games</button>
-        <h1><span className="suit-red">♥</span> Euchre <span>♠</span></h1>
-        <p className="menu-sub">First black jack deals</p>
-
-        {save && (
-          <>
-            <div className="menu-section">In progress</div>
-            <button className="resume-card" onClick={() => start(true)}>
-              <span className="resume-title">Resume — hand {save.state.handNumber}</span>
-              <span className="resume-scores">
-                {save.state.scores
-                  .map((s, t) => `${teamName(save.names, t)} ${s}`)
-                  .join('  ·  ')}
-              </span>
-            </button>
-          </>
-        )}
-
-        <div className="menu-section">{save ? 'New game' : 'Play'}</div>
-        <div className="mode-grid">
-          <button className="mode-card" onClick={() => start(false)}>
-            4 Player · Partners
-          </button>
-        </div>
-
-        <button className="menu-stats" onClick={() => setShowStats(true)}>Lifetime stats</button>
-      </div>
-      {showStats && <StatsModal onClose={() => setShowStats(false)} />}
     </div>
   );
 }

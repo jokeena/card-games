@@ -10,6 +10,13 @@ const MOBILE_SEAT_POS: [number, number][] = [[50, 100], [11, 44], [50, 18], [89,
 const TRICK_OFFSET: [number, number][] = [[0, 76], [-94, 0], [0, -52], [94, 0]];
 const MOBILE_TRICK_OFFSET: [number, number][] = [[0, 62], [-68, 0], [0, -46], [68, 0]];
 
+/**
+ * Where the kitty sits, in front of whichever seat dealt — clear of the
+ * dealer's own hand and of the order panel at the bottom.
+ */
+const KITTY_POS: [number, number][] = [[33, 63], [25, 51], [50, 40], [75, 51]];
+const MOBILE_KITTY_POS: [number, number][] = [[29, 56], [27, 43], [50, 40], [73, 43]];
+
 /** Your team plays the red 5s, theirs the black — matching the avatar rings. */
 export const TEAM_COLORS = ['#e06868', '#4a5568'];
 const TEAM_FIVES: ('red' | 'black')[] = ['red', 'black'];
@@ -82,6 +89,17 @@ function passedThisRound(state: GameState): boolean[] {
   return passed;
 }
 
+/** Going-alone toggle: gray/left = off, green/right = on. */
+function AloneSwitch({ on, toggle }: { on: boolean; toggle: () => void }) {
+  return (
+    <button className={`switch ${on ? 'switch-on' : ''}`} onClick={toggle}
+      role="switch" aria-checked={on}>
+      <span className="switch-track"><span className="switch-knob" /></span>
+      Alone
+    </button>
+  );
+}
+
 /** Face-down cards strewn about, one per trick taken. */
 function Strewn({ count }: { count: number }) {
   const n = Math.min(count, 9);
@@ -100,17 +118,59 @@ interface Props {
   state: GameState;
   names: string[];
   dispatch: (a: GameAction) => void;
+  /** House rule: the No Trump call is on the table in round 2. */
+  noTrumpRule: boolean;
 }
 
-export function EuchreTable({ state, names, dispatch }: Props) {
+interface Flight {
+  key: number;
+  /** Face-up turn card into the dealer's hand, or a face-down burial back out. */
+  card: Card | null;
+  from: [number, number];
+  to: [number, number];
+}
+
+export function EuchreTable({ state, names, dispatch, noTrumpRule }: Props) {
   const narrow = useIsNarrow();
   const positions = narrow ? MOBILE_SEAT_POS : SEAT_POS;
   const trickOffsets = narrow ? MOBILE_TRICK_OFFSET : TRICK_OFFSET;
+  const kittyPos = (narrow ? MOBILE_KITTY_POS : KITTY_POS)[state.dealer];
   const [collect, setCollect] = useState(false);
   const [aloneSel, setAloneSel] = useState(false);
   const [drawN, setDrawN] = useState(0);
+  const [flights, setFlights] = useState<Flight[]>([]);
+  const prevPhase = useRef(state.phase);
+  const flightKey = useRef(0);
 
   useEffect(() => setAloneSel(false), [state.handNumber, state.phase]);
+
+  // Pickup and burial flights: the turn card sails into the dealer's hand,
+  // and the buried card sails back out to the kitty. Removal timers live in
+  // a ref cleared only on unmount so a quick phase change can't strand one.
+  const flightTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+  useEffect(() => {
+    const prev = prevPhase.current;
+    prevPhase.current = state.phase;
+    let flight: Flight | null = null;
+    if (prev === 'order1' && state.phase === 'discard' && state.upcard) {
+      flight = { key: flightKey.current++, card: state.upcard, from: kittyPos, to: positions[state.dealer] };
+    } else if (prev === 'discard' && state.phase === 'play') {
+      flight = { key: flightKey.current++, card: null, from: positions[state.dealer], to: kittyPos };
+    }
+    if (flight) {
+      const f = flight;
+      setFlights((fs) => [...fs, f]);
+      const t = setTimeout(() => {
+        flightTimers.current.delete(t);
+        setFlights((fs) => fs.filter((x) => x.key !== f.key));
+      }, 800);
+      flightTimers.current.add(t);
+    }
+  }, [state.phase, state.dealer, state.upcard, kittyPos, positions]);
+  useEffect(() => {
+    const timers = flightTimers.current;
+    return () => timers.forEach(clearTimeout);
+  }, []);
 
   // Trick pickup: let the completed trick sit, then sweep it to the winner.
   useEffect(() => {
@@ -148,12 +208,15 @@ export function EuchreTable({ state, names, dispatch }: Props) {
   const humanTurnToPlay = state.phase === 'play' && state.turn === 0 && state.inactive !== 0;
   const humanDiscarding = state.phase === 'discard' && state.dealer === 0;
   const legal = useMemo(
-    () => (humanTurnToPlay ? legalPlays(state.hands[0], state.trick, state.trump!) : []),
+    () => (humanTurnToPlay ? legalPlays(state.hands[0], state.trick, state.trump) : []),
     [state, humanTurnToPlay],
   );
   const legalIds = new Set(legal.map((c) => c.id));
 
-  const hand = sortHand(state.hands[0] ?? [], state.trump ?? state.turnCard?.suit ?? null);
+  const hand = sortHand(
+    (state.phase === 'handReview' ? state.playHands[0] : state.hands[0]) ?? [],
+    state.trump ?? state.turnCard?.suit ?? null,
+  );
 
   const onCardClick = (card: Card) => {
     if (humanDiscarding) dispatch({ type: 'DISCARD', seat: 0, cardId: card.id });
@@ -167,15 +230,13 @@ export function EuchreTable({ state, names, dispatch }: Props) {
           ? `${state.dealer === 0 ? 'You draw' : `${names[state.dealer]} draws`} the black jack and deal${state.dealer === 0 ? '' : 's'}.`
           : 'First black jack deals…';
       case 'order1':
-        return state.turn === 0
-          ? (state.dealer === 0 ? 'Pick it up, or turn it down.' : 'Order it up, or pass.')
-          : `${names[state.turn]} is thinking…`;
       case 'order2':
-        return state.turn === 0
-          ? (state.dealer === 0 ? "You're stuck — name trump." : 'Name a suit, or pass.')
-          : `${names[state.turn]} is thinking…`;
+        return state.turn === 0 ? '' : `${names[state.turn]} is thinking…`;
       case 'discard':
-        return state.dealer === 0 ? 'Click a card to bury it.' : `${names[state.dealer]} picks it up…`;
+        if (state.dealer !== 0) return `${names[state.dealer]} picks it up…`;
+        return state.maker === 0
+          ? 'Click a card to bury it.'
+          : `${names[state.maker]} ordered you up, discard a card`;
       case 'play':
         return humanTurnToPlay ? 'Your play.' : '';
       case 'trickEnd':
@@ -201,6 +262,7 @@ export function EuchreTable({ state, names, dispatch }: Props) {
                 {SUIT_SYMBOL[state.trump]}
               </span>
             )}
+            {state.noTrump && <span className="board-trump board-nt">NT</span>}
           </div>
           {[0, 1].map((team) => (
             <div key={team} className="board-row">
@@ -218,7 +280,7 @@ export function EuchreTable({ state, names, dispatch }: Props) {
           ))}
           {makerVisible && (
             <div className="board-bid">
-              {state.maker === 0 ? 'You' : names[state.maker]} made it{state.alone ? ' — alone' : ''}
+              {state.maker === 0 ? 'You' : names[state.maker]} called it{state.alone ? ' — alone' : ''}
             </div>
           )}
         </div>
@@ -298,25 +360,117 @@ export function EuchreTable({ state, names, dispatch }: Props) {
           </div>
         )}
 
-        {/* Kitty and the turn card */}
-        {!isDraw && state.phase !== 'gameOver' && (state.turnCard || state.phase === 'order2') && (
-          <div className="kitty-spot">
+        {/* Kitty and the turn card, sitting in front of whoever dealt.
+            It stays on the felt all hand — the burial flies back into it. */}
+        {!isDraw && ['order1', 'order2', 'discard', 'play', 'trickEnd'].includes(state.phase) && (
+          <div className={`kitty-spot ${state.trump || state.noTrump ? 'kitty-quiet' : ''}`}
+            style={{ left: `${kittyPos[0]}%`, top: `${kittyPos[1]}%` }}>
             <div className="kitty-stack">
-              {Array.from({ length: 3 }).map((_, i) => (
+              {Array.from({ length: state.kitty.length + (state.discard ? 1 : 0) }).map((_, i) => (
                 <div key={i} className="fan-back" style={{ transform: `translate(${i * 2}px, ${-i * 2}px)` }} />
               ))}
-              {state.turnCard ? (
+              {state.turnCard && (
                 <div className="upcard"><CardView card={state.turnCard} size={narrow ? 'small' : 'mid'} /></div>
-              ) : (
-                <div className="upcard upcard-down"><div className="fan-back" /></div>
               )}
             </div>
-            <span className="kitty-note">
-              {state.turnCard
-                ? 'up for grabs'
-                : <><span className={isRed(state.turnedDown!) ? 'suit-red' : ''}>{SUIT_SYMBOL[state.turnedDown!]}</span> turned down</>}
-            </span>
+            {state.phase === 'order1' && state.turnCard && (
+              <span className="kitty-note">up for grabs</span>
+            )}
+            {state.phase === 'order2' && state.turnedDown && (
+              <span className="kitty-note">
+                <span className={isRed(state.turnedDown) ? 'suit-red' : ''}>{SUIT_SYMBOL[state.turnedDown]}</span> turned down
+              </span>
+            )}
           </div>
+        )}
+
+        {/* Pickup / burial in flight */}
+        {flights.map((f) => (
+          <div key={f.key} className={f.card ? 'flight-face' : 'flight-card'} style={{
+            ['--fx' as string]: `${f.from[0]}%`,
+            ['--fy' as string]: `${Math.min(f.from[1], 94)}%`,
+            ['--tx' as string]: `${f.to[0]}%`,
+            ['--ty' as string]: `${Math.min(f.to[1], 94)}%`,
+          }}>
+            {f.card && <CardView card={f.card} size="small" />}
+          </div>
+        ))}
+
+        {/* End of hand: the kitty flipped up and every hand as played */}
+        {state.phase === 'handReview' && (
+          <>
+            {!narrow && positions.map(([sx, sy], seat) => {
+              if (seat === 0) return null;
+              const cards = sortHand(state.playHands[seat] ?? [], state.trump);
+              if (cards.length === 0) return null;
+              const rx = sx + (50 - sx) * 0.52;
+              const ry = sy + (47 - sy) * 0.6;
+              return (
+                <div key={`review-${seat}`} className="review-row" style={{ left: `${rx}%`, top: `${ry}%` }}>
+                  <span className="review-name">{names[seat]}</span>
+                  <div className="review-cards">
+                    {cards.map((c) => <CardView key={c.id} card={c} size="small" />)}
+                  </div>
+                </div>
+              );
+            })}
+            {!narrow && (
+              <div className="review-row review-kitty">
+                <span className="review-name">In the kitty</span>
+                <div className="review-cards">
+                  {state.kitty.map((c) => <CardView key={c.id} card={c} size="small" />)}
+                  {state.discard && (
+                    <div className="review-buried">
+                      <CardView card={state.discard} size="small" />
+                      <span className="review-buried-tag">buried</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {!narrow && (
+              <div className="action-panel review-panel">
+                <div className="panel-label">The hands, as played this round</div>
+                <button className="btn btn-gold" onClick={() => dispatch({ type: 'CONTINUE' })}>
+                  Show the score
+                </button>
+              </div>
+            )}
+            {narrow && (
+              <div className="table-sheet review-sheet">
+                <div className="sheet-title">The hands, as played</div>
+                <div className="sheet-body">
+                  {[1, 2, 3, 0].map((seat) => {
+                    const cards = sortHand(state.playHands[seat] ?? [], state.trump);
+                    if (cards.length === 0) return null;
+                    return (
+                      <div key={`rsheet-${seat}`} className="sheet-row">
+                        <div className="sheet-row-head">
+                          <span className="team-dot" style={{ background: TEAM_COLORS[TEAM_OF[seat]] }} />
+                          {seat === 0 ? 'You' : names[seat]}
+                        </div>
+                        <div className="sheet-cards">
+                          {cards.map((c) => <CardView key={c.id} card={c} size="small" />)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="sheet-row">
+                    <div className="sheet-row-head">In the kitty</div>
+                    <div className="sheet-cards">
+                      {state.kitty.map((c) => <CardView key={c.id} card={c} size="small" />)}
+                      {state.discard && <CardView card={state.discard} size="small" />}
+                    </div>
+                  </div>
+                </div>
+                <div className="bid-controls sheet-actions">
+                  <button className="btn btn-gold" onClick={() => dispatch({ type: 'CONTINUE' })}>
+                    Show the score
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Trick */}
@@ -327,7 +481,7 @@ export function EuchreTable({ state, names, dispatch }: Props) {
             const doCollect = state.phase === 'trickEnd' && collect;
             const [wx, wy] = doCollect ? positions[state.trickWinner] : [0, 0];
             const leading = (state.phase === 'play' || state.phase === 'trickEnd') &&
-              i === winningIndex(state.trick, state.trump!);
+              i === winningIndex(state.trick, state.trump);
             return (
               <div
                 key={p.card.id}
@@ -356,10 +510,11 @@ export function EuchreTable({ state, names, dispatch }: Props) {
         {showOrderPanel && state.phase === 'order1' && state.turnCard && (
           <div className="action-panel">
             <div className="panel-label">
-              {state.dealer === 0 ? 'Pick up the' : 'Order up the'}{' '}
+              Order up the{' '}
               <span className={isRed(state.turnCard.suit) ? 'suit-red' : ''}>
                 {SUIT_SYMBOL[state.turnCard.suit]}
-              </span>?
+              </span>{' '}
+              to {state.dealer === 0 ? 'yourself' : names[state.dealer]}?
             </div>
             <div className="bid-controls">
               <button className="bid-pass" onClick={() => dispatch({ type: 'PASS', seat: 0 })}>
@@ -369,10 +524,7 @@ export function EuchreTable({ state, names, dispatch }: Props) {
                 onClick={() => dispatch({ type: 'ORDER_UP', seat: 0, alone: aloneSel })}>
                 {state.dealer === 0 ? 'Pick it up' : 'Order it up'}
               </button>
-              <button className={`alone-toggle ${aloneSel ? 'alone-on' : ''}`}
-                onClick={() => setAloneSel((a) => !a)}>
-                Alone
-              </button>
+              <AloneSwitch on={aloneSel} toggle={() => setAloneSel((a) => !a)} />
             </div>
           </div>
         )}
@@ -388,17 +540,20 @@ export function EuchreTable({ state, names, dispatch }: Props) {
                   {SUIT_SYMBOL[s]}
                 </button>
               ))}
+              {noTrumpRule && (
+                <button className="suit-btn suit-nt" title="No trump — aces high"
+                  onClick={() => dispatch({ type: 'NAME_TRUMP', seat: 0, suit: 'NT', alone: aloneSel })}>
+                  NT
+                </button>
+              )}
             </div>
             <div className="bid-controls">
               {state.dealer !== 0 && (
-                <button className="bid-pass" onClick={() => dispatch({ type: 'PASS', seat: 0 })}>
+                <button className="bid-pass bid-pass-sm" onClick={() => dispatch({ type: 'PASS', seat: 0 })}>
                   Pass
                 </button>
               )}
-              <button className={`alone-toggle ${aloneSel ? 'alone-on' : ''}`}
-                onClick={() => setAloneSel((a) => !a)}>
-                Alone
-              </button>
+              <AloneSwitch on={aloneSel} toggle={() => setAloneSel((a) => !a)} />
             </div>
           </div>
         )}

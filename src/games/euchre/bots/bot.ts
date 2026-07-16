@@ -38,6 +38,25 @@ export function handScore(hand: Card[], s: Suit): number {
 const CALL = 5.5;
 const ALONE = 8.5;
 
+/**
+ * Strength of `hand` played at No Trump: aces are unbeatable, kings nearly,
+ * and nothing ruffs. Scaled to the same CALL/ALONE thresholds.
+ */
+export function ntScore(hand: Card[]): number {
+  let score = 0;
+  for (const c of hand) {
+    if (c.rank === 'A') score += 2.2;
+    else if (c.rank === 'K') score += 1.1;
+    else if (c.rank === 'Q') score += 0.5;
+  }
+  return score;
+}
+
+export interface BotOptions {
+  /** House rule: No Trump may be called in round 2. */
+  noTrump?: boolean;
+}
+
 /** The dealer's best discard from 6 cards: shed a lone low off-suit card, else the lowest. */
 export function pickDiscard(hand: Card[], trump: Suit): Card {
   const offSuit = hand.filter((c) => effectiveSuit(c, trump) !== trump);
@@ -68,31 +87,34 @@ function unseen(state: GameState, seat: number): Card[] {
 
 /** True when no card still unaccounted for beats `card` in its own lane. */
 function isBoss(state: GameState, seat: number, card: Card): boolean {
-  const trump = state.trump!;
+  const trump = state.trump;
   const mySuit = effectiveSuit(card, trump);
   return !unseen(state, seat).some((c) =>
     effectiveSuit(c, trump) === mySuit && trickPower(c, trump) > trickPower(card, trump));
 }
 
 /** Sort key that spends plain cards before trump, and low before high. */
-function spendCost(c: Card, trump: Suit): number {
+function spendCost(c: Card, trump: Suit | null): number {
   return (effectiveSuit(c, trump) === trump ? 100 : 0) + trickPower(c, trump);
 }
 
-function cheapest(cards: Card[], trump: Suit): Card {
+function cheapest(cards: Card[], trump: Suit | null): Card {
   return cards.reduce((lo, c) => (spendCost(c, trump) < spendCost(lo, trump) ? c : lo));
 }
 
 function chooseLead(state: GameState, seat: number): Card {
-  const trump = state.trump!;
+  const trump = state.trump;
   const hand = state.hands[seat];
   const makers = TEAM_OF[state.maker] === TEAM_OF[seat];
   const trumps = hand.filter((c) => effectiveSuit(c, trump) === trump);
   const plain = hand.filter((c) => effectiveSuit(c, trump) !== trump);
   const enemyTrumpLive = unseen(state, seat).some((c) => effectiveSuit(c, trump) === trump);
 
-  // Makers holding the boss trump pull the opponents' trump out.
-  if (makers && enemyTrumpLive && trumps.length > 0) {
+  // A boss trump is a guaranteed trick: makers lead it to pull the
+  // opponents' trump, and once no enemy trump is live ANYONE cashes it —
+  // banking the sure winner first can promote a weak off-suit card as
+  // the others discard. (Defenders don't lead trump into live enemy trump.)
+  if (trumps.length > 0 && (makers || !enemyTrumpLive)) {
     const best = trumps.reduce((hi, c) => (trickPower(c, trump) > trickPower(hi, trump) ? c : hi));
     if (isBoss(state, seat, best)) return best;
   }
@@ -106,7 +128,7 @@ function chooseLead(state: GameState, seat: number): Card {
 }
 
 function chooseFollow(state: GameState, seat: number, legal: Card[]): Card {
-  const trump = state.trump!;
+  const trump = state.trump;
   const wi = winningIndex(state.trick, trump);
   const winner = state.trick[wi];
   const partnerWinning = TEAM_OF[winner.seat] === TEAM_OF[seat] && winner.seat !== seat;
@@ -134,7 +156,7 @@ function chooseFollow(state: GameState, seat: number, legal: Card[]): Card {
   return cheapest(legal, trump);
 }
 
-export function botAction(state: GameState, seat: number): GameAction | null {
+export function botAction(state: GameState, seat: number, opts: BotOptions = {}): GameAction | null {
   if (seat === state.inactive) return null;
   const hand = state.hands[seat];
 
@@ -161,7 +183,7 @@ export function botAction(state: GameState, seat: number): GameAction | null {
 
     case 'order2': {
       if (seat !== state.turn) return null;
-      let bestSuit: Suit | null = null;
+      let bestSuit: Suit | 'NT' | null = null;
       let bestScore = -1;
       for (const s of SUITS) {
         if (s === state.turnedDown) continue;
@@ -171,8 +193,15 @@ export function botAction(state: GameState, seat: number): GameAction | null {
           bestSuit = s;
         }
       }
+      if (opts.noTrump) {
+        const nt = ntScore(hand);
+        if (nt > bestScore) {
+          bestScore = nt;
+          bestSuit = 'NT';
+        }
+      }
       if (seat === state.dealer || bestScore >= CALL) {
-        // Stuck dealers name their least-bad suit and play it straight.
+        // Stuck dealers name their least-bad call and play it straight.
         return { type: 'NAME_TRUMP', seat, suit: bestSuit!, alone: bestScore >= ALONE };
       }
       return { type: 'PASS', seat };
@@ -185,7 +214,7 @@ export function botAction(state: GameState, seat: number): GameAction | null {
 
     case 'play': {
       if (seat !== state.turn) return null;
-      const legal = legalPlays(hand, state.trick, state.trump!);
+      const legal = legalPlays(hand, state.trick, state.trump);
       const card = legal.length === 1
         ? legal[0]
         : state.trick.length === 0

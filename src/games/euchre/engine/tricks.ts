@@ -2,9 +2,10 @@ import { Card, Played, Suit, effectiveSuit, trickPower } from './types';
 
 /**
  * Index into the trick of the card currently winning. The 24-card deck has
- * no duplicates, so ties are impossible.
+ * no duplicates, so ties are impossible. `trump` null = the No Trump call:
+ * nothing ruffs, highest of the led suit wins.
  */
-export function winningIndex(trick: Played[], trump: Suit): number {
+export function winningIndex(trick: Played[], trump: Suit | null): number {
   let wi = 0;
   for (let i = 1; i < trick.length; i++) {
     const w = trick[wi].card;
@@ -23,7 +24,7 @@ export function winningIndex(trick: Played[], trump: Suit): number {
  * follow the led suit if able — the left bower is trump, not its printed
  * suit — and if void, anything goes.
  */
-export function legalPlays(hand: Card[], trick: Played[], trump: Suit): Card[] {
+export function legalPlays(hand: Card[], trick: Played[], trump: Suit | null): Card[] {
   if (trick.length === 0) return [...hand];
   const led = effectiveSuit(trick[0].card, trump);
   const follow = hand.filter((c) => effectiveSuit(c, trump) === led);

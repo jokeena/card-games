@@ -33,6 +33,7 @@ function playState(over: Partial<GameState>): GameState {
     played: [],
     turn: 0,
     trump: 'S',
+    noTrump: false,
     maker: 0,
     alone: false,
     inactive: null,
@@ -41,6 +42,7 @@ function playState(over: Partial<GameState>): GameState {
     trickWinner: -1,
     tricksPlayed: 0,
     tricksTaken: [0, 0],
+    playHands: [],
     handResult: null,
     winnerTeam: null,
     log: [],
@@ -52,13 +54,13 @@ function playState(over: Partial<GameState>): GameState {
 function playOut(state: GameState): GameState {
   let s = state;
   let guard = 0;
-  while (s.phase === 'play' || s.phase === 'trickEnd') {
+  while (s.phase === 'play' || s.phase === 'trickEnd' || s.phase === 'handReview') {
     if (guard++ > 100) throw new Error('hand did not terminate');
-    if (s.phase === 'trickEnd') {
+    if (s.phase === 'trickEnd' || s.phase === 'handReview') {
       s = gameReducer(s, { type: 'CONTINUE' });
       continue;
     }
-    const legal = legalPlays(s.hands[s.turn], s.trick, s.trump!);
+    const legal = legalPlays(s.hands[s.turn], s.trick, s.trump);
     s = gameReducer(s, { type: 'PLAY', seat: s.turn, cardId: legal[0].id });
   }
   return s;
@@ -280,6 +282,25 @@ describe('play and scoring', () => {
     expect(gameReducer(s, { type: 'CONTINUE' }).phase).toBe('gameOver');
   });
 
+  it('the fifth trick opens the hand review before scoring', () => {
+    const hands = dominantHands();
+    let s = playState({ hands, maker: 0, dealer: 3, turn: 0, playHands: hands.map((h) => [...h]) });
+    let guard = 0;
+    while (s.tricksPlayed < 5) {
+      if (guard++ > 60) throw new Error('stuck');
+      if (s.phase === 'trickEnd' && s.tricksPlayed < 5) { s = gameReducer(s, { type: 'CONTINUE' }); continue; }
+      const legal = legalPlays(s.hands[s.turn], s.trick, s.trump);
+      s = gameReducer(s, { type: 'PLAY', seat: s.turn, cardId: legal[0].id });
+    }
+    s = gameReducer(s, { type: 'CONTINUE' });
+    expect(s.phase).toBe('handReview');
+    expect(s.playHands.map((h) => h.length)).toEqual([5, 5, 5, 5]);
+    expect(s.handResult).toBeNull();
+    s = gameReducer(s, { type: 'CONTINUE' });
+    expect(s.phase).toBe('handEnd');
+    expect(s.handResult).not.toBeNull();
+  });
+
   it('a completed non-final hand rotates the deal clockwise', () => {
     const s = playOut(playState({ hands: dominantHands(), maker: 0, dealer: 3, turn: 0 }));
     const next = gameReducer(s, { type: 'CONTINUE' });
@@ -302,6 +323,25 @@ describe('play and scoring', () => {
     expect(illegal).toBe(s);
     const legal = gameReducer(s, { type: 'PLAY', seat: 1, cardId: c('C', 'J').id });
     expect(legal.trick).toHaveLength(2);
+  });
+
+  it('No Trump: aces high, no bowers, nothing ruffs', () => {
+    // Jacks are plain cards: J♣ follows clubs, not spades.
+    const hand = [c('C', 'J'), c('H', 'A')];
+    expect(legalPlays(hand, [p(3, c('C', 'A'))], null).map((x) => x.id)).toEqual([c('C', 'J').id]);
+    // Highest of the led suit wins; off-suit "trump" does nothing.
+    expect(winningIndex([p(0, c('H', '10')), p(1, c('H', 'A')), p(2, c('S', 'J'))], null)).toBe(1);
+    expect(winningIndex([p(0, c('H', 'K')), p(1, c('H', 'J')), p(2, c('H', 'A'))], null)).toBe(2);
+  });
+
+  it("NAME_TRUMP 'NT' starts a no-trump hand", () => {
+    let g = gameReducer(newGame(lcg(7)), { type: 'CONTINUE' });
+    for (let i = 0; i < 4; i++) g = gameReducer(g, { type: 'PASS', seat: g.turn });
+    const s = gameReducer(g, { type: 'NAME_TRUMP', seat: g.turn, suit: 'NT', alone: false });
+    expect(s.phase).toBe('play');
+    expect(s.trump).toBeNull();
+    expect(s.noTrump).toBe(true);
+    expect(s.maker).toBe(g.turn);
   });
 
   it('sloughing off-suit marks a public void in the led suit', () => {
