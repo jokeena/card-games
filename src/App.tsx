@@ -1,13 +1,17 @@
 import { useState } from 'react';
+import { EuchreApp } from './games/euchre/EuchreApp';
 import { PinochleApp } from './games/pinochle/PinochleApp';
 
-type GameId = 'pinochle';
+type GameId = 'pinochle' | 'euchre';
 
 export default function App() {
   const [game, setGame] = useState<GameId | null>(null);
 
   if (game === 'pinochle') {
     return <PinochleApp onExit={() => setGame(null)} />;
+  }
+  if (game === 'euchre') {
+    return <EuchreApp onExit={() => setGame(null)} />;
   }
 
   return (
@@ -19,7 +23,7 @@ export default function App() {
         <div className="menu-section">Pick a game</div>
         <div className="mode-grid">
           <button className="mode-card" onClick={() => setGame('pinochle')}>Pinochle</button>
-          <button className="mode-card" disabled>Euchre<br /><small>Coming soon</small></button>
+          <button className="mode-card" onClick={() => setGame('euchre')}>Euchre</button>
         </div>
       </div>
     </div>

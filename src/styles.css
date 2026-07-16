@@ -1567,3 +1567,159 @@ body {
   .resume-scores { font-size: 0.72rem; }
   .menu-stats { margin-top: 18px; }
 }
+
+/* ================= Euchre ================= */
+
+/* Trick tally on the board: five pips, filled as tricks are taken */
+.tally { display: inline-flex; gap: 3px; margin-right: 8px; align-items: center; }
+.tally i {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: rgba(43, 48, 64, 0.14);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.18);
+}
+.tally i.tally-won { background: var(--gold-deep); box-shadow: 0 0 4px rgba(212, 175, 55, 0.6); }
+
+/* A loner's partner, sitting this hand out */
+.avatar-out { opacity: 0.45; filter: grayscale(0.8) brightness(1.05); }
+.out-note { font-style: italic; opacity: 0.85; }
+.bubble-alone {
+  background: linear-gradient(165deg, #d4af37, #b8912a);
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-size: 0.62rem;
+}
+.chip-trump { font-size: 0.7rem; padding-top: 1px; }
+.chip-trump.chip-red { color: #ff9d8a; }
+
+/* Kitty stack with the turn card riding on top */
+.kitty-spot {
+  position: absolute;
+  left: 50%; top: 52%;
+  margin-left: -186px;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 42px;
+  z-index: 5;
+  animation: fadeIn 0.3s ease-out;
+}
+.kitty-stack { position: relative; width: 48px; height: 66px; }
+.kitty-stack > .fan-back { position: absolute; inset: 0; margin: 0; }
+.upcard { position: absolute; left: 12px; top: 8px; transform: rotate(5deg); }
+.upcard-down .fan-back { position: static; margin: 0; transform: rotate(5deg); }
+.kitty-note {
+  font-size: 0.72rem;
+  letter-spacing: 1.2px;
+  color: rgba(255, 255, 255, 0.8);
+  text-shadow: 0 1px 3px rgba(0, 40, 10, 0.6);
+  white-space: nowrap;
+}
+@media (max-width: 740px) {
+  .kitty-spot { margin-left: 0; left: 19%; top: 33%; gap: 30px; }
+}
+
+/* Going-alone toggle beside the order buttons */
+.alone-toggle {
+  background: #fff;
+  border: 1px solid #d5cfba;
+  border-radius: 9px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  letter-spacing: 0.5px;
+  color: var(--ink-dim);
+  transition: all 0.15s;
+}
+.alone-toggle:hover { border-color: var(--navy); color: var(--navy-deep); }
+.alone-toggle.alone-on {
+  background: var(--navy);
+  border-color: var(--navy-deep);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* Dealer draw: cards flipped around the table hunting the black jack */
+.draw-layer { position: absolute; inset: 0; z-index: 8; pointer-events: none; }
+.draw-card {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  animation: drawFlip 0.24s ease-out;
+}
+@keyframes drawFlip {
+  from { transform: translate(-50%, -50%) scale(1.25); opacity: 0; }
+  to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+.draw-jack { z-index: 2; animation: jackPop 0.55s ease-out; }
+@keyframes jackPop {
+  0% { transform: translate(-50%, -50%) scale(1.7); }
+  60% { transform: translate(-50%, -50%) scale(0.94); }
+  100% { transform: translate(-50%, -50%) scale(1); }
+}
+.draw-jack .card {
+  box-shadow: 0 0 0 3px var(--gold), 0 0 20px rgba(212, 175, 55, 0.75), 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+/* ---- The score fives ---- */
+.fives-spot { position: absolute; z-index: 4; }
+.fives-you { left: 12%; bottom: 7%; }
+.fives-them { right: 12%; top: 9%; }
+@media (max-width: 740px) {
+  .fives-you { left: 14%; bottom: 15%; }
+  .fives-them { right: 14%; top: 24%; }
+  .fives { transform: scale(0.78); }
+}
+
+.fives { position: relative; width: 46px; height: 64px; }
+.five-card {
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  background: linear-gradient(160deg, #fdfcf7, #f4f0e2);
+  border: 1px solid #cfc9b4;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  transition: transform 0.5s ease;
+}
+.five-back {
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.3) 0 1px, transparent 1px 5px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.3) 0 1px, transparent 1px 5px),
+    linear-gradient(165deg, #2f62b4, #1d4184);
+  border: 2px solid #fbfbf7;
+}
+.five-svg { width: 100%; height: 100%; display: block; }
+.five-pip { font-size: 11px; text-anchor: middle; dominant-baseline: central; }
+.five-index { font-size: 7.5px; font-weight: 700; text-anchor: middle; font-family: Georgia, serif; }
+.five-index-suit { font-size: 7px; }
+.five-red .five-pip, .five-red .five-index { fill: #c0392b; }
+.five-black .five-pip, .five-black .five-index { fill: #1c1c1c; }
+.fives-win .five-card {
+  box-shadow: 0 0 0 2px var(--gold), 0 2px 12px rgba(212, 175, 55, 0.65);
+}
+
+/* Dev harness (#fives): all eleven states side by side */
+.fives-gallery {
+  min-height: 100vh;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 34px 46px;
+  padding: 48px;
+  background: radial-gradient(ellipse at 50% 35%, var(--felt-1) 0%, var(--felt-2) 55%, var(--felt-3) 100%);
+}
+.fives-gallery-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  width: 120px;
+}
+.fives-gallery-label {
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.15rem;
+  text-shadow: 0 1px 3px rgba(0, 40, 10, 0.6);
+}
