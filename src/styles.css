@@ -1661,21 +1661,52 @@ body {
 .action-panel.panel-raised { bottom: 150px; }
 @media (max-width: 740px) {
   .action-panel.panel-raised { bottom: 58px; }
-  .panel-euchre .bid-controls { flex-wrap: nowrap; gap: 8px; }
+  .panel-euchre { padding: 10px 14px 12px; }
+  .panel-euchre .panel-label { font-size: 0.78rem; }
+  .panel-euchre .bid-controls { flex-wrap: nowrap; gap: 7px; }
   .panel-euchre .bid-main,
   .panel-euchre .bid-pass {
     white-space: nowrap;
-    padding: 10px 13px;
-    font-size: 0.88rem;
+    padding: 9px 12px;
+    font-size: 0.85rem;
   }
   .panel-euchre .switch { white-space: nowrap; }
+  .panel-euchre .suit-buttons { gap: 7px; }
+  .panel-euchre .suit-btn { width: 46px; height: 46px; font-size: 1.6rem; }
+  .panel-euchre .suit-nt { font-size: 0.72rem; }
 
-  /* Euchre scoreboard: one slim line, both teams side by side */
+  /* Euchre scoreboard: one slim strip hugging the left edge */
+  .board-euchre {
+    right: auto;
+    justify-content: flex-start;
+    gap: 1px 10px;
+  }
   .board-euchre .board-row { display: inline-flex; align-items: center; gap: 4px; }
   .board-euchre .board-name { flex: none; }
   .board-euchre .board-score { margin-left: 3px; font-size: 0.85rem; }
   .board-euchre .tally { margin: 0 1px; gap: 2px; }
   .board-euchre .tally i { width: 5px; height: 5px; }
+
+  /* Header flows left-to-right on phones — nothing centered, nothing overlaps */
+  .bar-dealt {
+    position: static;
+    transform: none;
+    margin-left: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .bar-switch {
+    background: #fff;
+    border: 1px solid #d5cfba;
+    border-radius: 999px;
+    padding: 5px 10px;
+    margin-left: auto;
+    font-size: 0.74rem;
+    letter-spacing: 0.3px;
+  }
+  .bar-switch .switch-track { width: 30px; height: 17px; }
+  .bar-switch .switch-knob { width: 13px; height: 13px; }
+  .bar-switch.switch-on .switch-knob { left: 15px; }
 }
 
 /* Round-2 pass, quieter than the suit buttons */
