@@ -16,7 +16,7 @@ const MOBILE_TRICK_OFFSET: [number, number][] = [[0, 62], [-68, 0], [0, -46], [6
  * panel raises itself to make room).
  */
 const KITTY_POS: [number, number][] = [[50, 88], [25, 51], [50, 40], [75, 51]];
-const MOBILE_KITTY_POS: [number, number][] = [[50, 54], [36, 40], [50, 40], [64, 40]];
+const MOBILE_KITTY_POS: [number, number][] = [[50, 54], [42, 44], [50, 42], [58, 44]];
 
 /**
  * Once the hand is underway the kitty retires to the table edge beside
