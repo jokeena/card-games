@@ -1,7 +1,7 @@
 {
-  "name": "Pinochle",
-  "short_name": "Pinochle",
-  "description": "Family house-rules pinochle against bots",
+  "name": "Card Games",
+  "short_name": "Card Games",
+  "description": "Family house-rules card games against bots",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

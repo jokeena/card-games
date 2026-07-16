@@ -3,7 +3,7 @@ import { GameAction, GameState } from '../engine/game';
 import { partnerOf } from '../engine/modes';
 import { legalPlays, winningIndex } from '../engine/tricks';
 import { Card, RANK_POWER, Suit, SUITS, SUIT_SYMBOL, isCounter, isRed } from '../engine/types';
-import { CardView } from './CardView';
+import { CardView } from '../../../cards/CardView';
 
 const SEAT_POS: Record<number, [number, number][]> = {
   3: [[50, 100], [10, 52], [90, 52]],

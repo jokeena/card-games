@@ -8,29 +8,37 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev                        # Vite dev server
 npm test                           # run all tests (vitest run)
 npx vitest run -t "double run"     # run a single test by name
-npx vitest run src/engine/engine.test.ts   # run one test file
+npx vitest run src/games/pinochle/engine/engine.test.ts   # run one test file
 npm run build                      # tsc type-check + vite build to dist/
 ```
 
-Deployed to GitHub Pages via `.github/workflows/` — `vite.config.ts` sets `base: '/pinochle/'`, so asset paths assume that subpath in production.
+Deployed to GitHub Pages via `.github/workflows/` — `vite.config.ts` sets `base: '/card-games/'`, so asset paths assume that subpath in production.
 
 ## Architecture
 
-Browser-only pinochle game vs bots. No backend, no state libraries — everything flows through one reducer.
+Browser-only card games vs bots (currently Pinochle; Euchre planned). No backend, no state libraries — each game flows through one reducer.
 
-**`src/engine/`** — pure, UI-agnostic game logic:
-- `game.ts` is the heart: `GameState` + `gameReducer`, a strict phase machine (`bidding → trump → discard|pass1/pass2 → meld → play ⇄ trickEnd → handEnd → gameOver`). Every action validates phase and seat and returns the state unchanged if illegal — the reducer is the rules enforcement, not the UI.
-- `modes.ts` — all six game variants (3–6 players) are data in `MODES`, not code branches. `ModeConfig` (hand size, kitty, bid start, stuck bid, teams as a seat→team array, pass count) drives the reducer generically. New variants should be new `ModeConfig` entries.
-- `meld.ts` / `tricks.ts` — meld scoring and trick legality.
-- The only randomness is the deal (`deck.ts`, injectable rng); the reducer itself is deterministic.
+**`src/App.tsx`** — game picker. Renders the chosen game's app component (e.g. `PinochleApp`); each game owns its own menu, engine, bots, and table UI under `src/games/<game>/`.
 
-**`src/bots/bot.ts`** — pure function `botAction(state, seat, difficulty)` returning a `GameAction` for any phase. Bots read the same `GameState` (including other hands — they only look at their own by convention).
+**`src/cards/`** — shared across games:
+- `types.ts` — `Card`/`Suit`/`Rank` (both games use 9–A four suits), suit symbols/names, `Played`. Game-specific rank power and scoring live in each game's engine, not here (euchre's bowers reorder ranks per trump).
+- `deck.ts` — `buildDeck(copies)` (1 = 24-card euchre deck, 2 = 48-card pinochle deck), `shuffle` (injectable rng), generic `deal`.
+- `CardView.tsx` — hand-drawn card faces (pips + court art). All card styling in `src/styles.css` (hand-rolled, no CSS framework, shared by all games).
 
-**`src/App.tsx`** — glue. `useReducer(gameReducer)`; a single `useEffect` drives bots: whenever `actorFor(state)` is a non-zero seat, it dispatches that bot's action after a delay. Bot throw-in strategy (conceding a hopeless bid at meld) lives here, not in `bot.ts`. **Seat 0 is always the human.**
+**`src/games/pinochle/`** — everything pinochle:
+- `engine/` — pure, UI-agnostic game logic:
+  - `game.ts` is the heart: `GameState` + `gameReducer`, a strict phase machine (`bidding → trump → discard|pass1/pass2 → meld → play ⇄ trickEnd → handReview → handEnd → gameOver`). Every action validates phase and seat and returns the state unchanged if illegal — the reducer is the rules enforcement, not the UI.
+  - `modes.ts` — all six game variants (3–6 players) are data in `MODES`, not code branches. `ModeConfig` (hand size, kitty, bid start, stuck bid, teams as a seat→team array, pass count) drives the reducer generically. New variants should be new `ModeConfig` entries.
+  - `meld.ts` / `tricks.ts` — meld scoring and trick legality.
+  - `types.ts` — re-exports `src/cards/types` plus pinochle-specific `RANK_POWER` and `isCounter`.
+  - The only randomness is the deal (`deck.ts`, injectable rng); the reducer itself is deterministic.
+- `bots/bot.ts` — pure function `botAction(state, seat)` returning a `GameAction` for any phase (single always-hard skill level). Bots read the same `GameState` (including other hands — they only look at their own by convention). Tests: `bot.test.ts` (unit) and `bot.sim.test.ts` (full-game simulations).
+- `PinochleApp.tsx` — glue. `useReducer` over a history wrapper (`histReducer`: undo to human-decision points) around `gameReducer`; a single `useEffect` drives bots: whenever `actorFor(state)` is a non-zero seat, it dispatches that bot's action after a delay. Bot throw-in strategy (conceding a hopeless bid at meld), saved-game persistence, and lifetime stats (localStorage) live here, not in `bot.ts`. **Seat 0 is always the human.**
+- `ui/` — `GameTable.tsx` (table, hands, bid/discard/pass controls), `Modals.tsx` (meld reveal, hand summary, game over).
 
-**`src/ui/`** — `GameTable.tsx` (table, hands, bid/discard/pass controls), `Modals.tsx` (meld reveal, hand summary, game over), all styled by hand-rolled `styles.css` (no CSS framework).
+A future euchre game should mirror this shape under `src/games/euchre/` with its own engine — do not generalize the pinochle engine to serve both (bowers break its trick-legality and rank assumptions).
 
-## House rules — do not "correct" to standard pinochle
+## Pinochle house rules — do not "correct" to standard pinochle
 
 Scoring intentionally deviates from standard rules (documented in `meld.ts` header comment and README):
 - Counters (A/10/K) are worth **1 point each**, +1 for last trick → 25 trick points per hand.
@@ -39,4 +47,4 @@ Scoring intentionally deviates from standard rules (documented in `meld.ts` head
 - Strict must-beat/must-trump play: `legalPlays` makes reneging impossible, including beating over a partner.
 - A side keeps its meld only if it takes at least one trick; going set subtracts the bid; bidder goes out first at the target score.
 
-Tests in `src/engine/engine.test.ts` pin these house rules — a "wrong-looking" expected value is probably intentional.
+Tests in `src/games/pinochle/engine/engine.test.ts` pin these house rules — a "wrong-looking" expected value is probably intentional.

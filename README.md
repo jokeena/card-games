@@ -1,8 +1,8 @@
-# Pinochle — House Rules Edition
+# Card Games — House Rules Edition
 
-A browser Pinochle game played against bots, supporting 3, 4, 5, and 6-player variants with custom house rules. Built with React + TypeScript + Vite; no backend — everything runs client-side.
+Browser card games played against bots. Built with React + TypeScript + Vite; no backend — everything runs client-side. Currently ships Pinochle (3–6 player variants, custom house rules); Euchre is next.
 
-## Game modes
+## Pinochle modes
 
 | Mode | Deal | Bid opens / dealer stuck | Play to |
 |---|---|---|---|

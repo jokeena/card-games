@@ -1,4 +1,4 @@
-import { Card, isRed, Suit, SUIT_SYMBOL } from '../engine/types';
+import { Card, isRed, Suit, SUIT_SYMBOL } from './types';
 
 interface Props {
   card?: Card;

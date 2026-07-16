@@ -1,10 +1,11 @@
 import { Card, RANKS, SUITS } from './types';
 
-export function makeDeck(): Card[] {
+/** All suit/rank combinations, `copies` of each: 1 → 24-card euchre deck, 2 → 48-card pinochle deck. */
+export function buildDeck(copies: number): Card[] {
   const deck: Card[] = [];
   for (const suit of SUITS) {
     for (const rank of RANKS) {
-      for (let copy = 0; copy < 2; copy++) {
+      for (let copy = 0; copy < copies; copy++) {
         deck.push({ id: `${suit}${rank}#${copy}`, suit, rank });
       }
     }
@@ -21,13 +22,13 @@ export function shuffle<T>(items: T[], rng: () => number = Math.random): T[] {
   return a;
 }
 
-export function dealHands(
+/** Deal a shuffled deck into `players` hands of `handSize`, plus a kitty of `kittySize`. */
+export function deal(
+  deck: Card[],
   players: number,
   handSize: number,
   kittySize: number,
-  rng: () => number = Math.random,
 ): { hands: Card[][]; kitty: Card[] } {
-  const deck = shuffle(makeDeck(), rng);
   const hands: Card[][] = [];
   for (let p = 0; p < players; p++) {
     hands.push(deck.slice(p * handSize, (p + 1) * handSize));
