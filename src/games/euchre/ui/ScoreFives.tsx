@@ -32,8 +32,13 @@ const COVER_POSE: Record<number, string> = {
 
 const PIPS: [number, number][] = [[30, 20], [70, 20], [50, 50], [30, 80], [70, 80]];
 
-function FiveFace({ color }: { color: 'red' | 'black' }) {
-  const sym = color === 'red' ? '♥' : '♠';
+/** The red team scores with the 5♥ and 5♦ together; the black team with the 5♠ and 5♣. */
+const PAIR_SUITS: Record<'red' | 'black', [string, string]> = {
+  red: ['♥', '♦'],
+  black: ['♠', '♣'],
+};
+
+function FiveFace({ sym }: { sym: string }) {
   return (
     <svg className="five-svg" viewBox="0 0 44 62" aria-hidden="true">
       <text className="five-index" x="5.5" y="11">5</text>
@@ -73,13 +78,14 @@ export function ScoreFives({ score, color }: Props) {
     top = { face: true, style: { transform: 'translate(56%, 0)' } };
   }
 
+  const [bottomSym, topSym] = PAIR_SUITS[color];
   return (
     <div className={`fives ${n === 10 ? 'fives-win' : ''}`} title={`${n} point${n === 1 ? '' : 's'}`}>
       <div className={`${cls} ${bottom.face ? '' : 'five-back'}`} style={bottom.style}>
-        {bottom.face && <FiveFace color={color} />}
+        {bottom.face && <FiveFace sym={bottomSym} />}
       </div>
       <div className={`${cls} ${top.face ? '' : 'five-back'}`} style={top.style}>
-        {top.face && <FiveFace color={color} />}
+        {top.face && <FiveFace sym={topSym} />}
       </div>
     </div>
   );

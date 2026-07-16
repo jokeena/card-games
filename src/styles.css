@@ -1801,3 +1801,19 @@ body {
   font-size: 1.15rem;
   text-shadow: 0 1px 3px rgba(0, 40, 10, 0.6);
 }
+
+/* Euchre: the hand-end score sheet leaves the table crisp behind it */
+.backdrop-clear {
+  backdrop-filter: none;
+  background: rgba(40, 48, 40, 0.22);
+}
+
+/* Euchre review rows are a still life — no hover pop */
+.review-static .card { pointer-events: none; }
+
+/* Pin the euchre card area's width (6 cards at the discard) so the You
+   avatar never drifts as the hand fills and empties */
+.hand-row-euchre .hand-cards { min-width: 320px; }
+@media (max-width: 740px) {
+  .hand-row-euchre .hand-cards { min-width: 0; }
+}

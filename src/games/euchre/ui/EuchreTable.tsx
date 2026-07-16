@@ -20,7 +20,7 @@ const MOBILE_KITTY_POS: [number, number][] = [[50, 84], [27, 43], [50, 40], [73,
 
 /**
  * Once the hand is underway the kitty retires to the table edge beside
- * whoever called trump, out of the way of the trick.
+ * the dealer, out of the way of the trick.
  */
 const KITTY_PLAY_POS: [number, number][] = [[38, 90], [12, 68], [63, 17], [88, 68]];
 const MOBILE_KITTY_PLAY_POS: [number, number][] = [[36, 84], [14, 60], [64, 19], [86, 60]];
@@ -129,9 +129,9 @@ export function EuchreTable({ state, names, dispatch, noTrumpRule }: Props) {
   const narrow = useIsNarrow();
   const positions = narrow ? MOBILE_SEAT_POS : SEAT_POS;
   const trickOffsets = narrow ? MOBILE_TRICK_OFFSET : TRICK_OFFSET;
-  // The kitty parks by the maker once play starts; the CSS transition glides it over.
-  const kittyPos = (state.phase === 'play' || state.phase === 'trickEnd') && state.maker >= 0
-    ? (narrow ? MOBILE_KITTY_PLAY_POS : KITTY_PLAY_POS)[state.maker]
+  // The kitty parks by the dealer's edge once play starts; the CSS transition glides it over.
+  const kittyPos = state.phase === 'play' || state.phase === 'trickEnd'
+    ? (narrow ? MOBILE_KITTY_PLAY_POS : KITTY_PLAY_POS)[state.dealer]
     : (narrow ? MOBILE_KITTY_POS : KITTY_POS)[state.dealer];
   const [collect, setCollect] = useState(false);
   const [aloneSel, setAloneSel] = useState(false);
@@ -401,7 +401,7 @@ export function EuchreTable({ state, names, dispatch, noTrumpRule }: Props) {
               const rx = sx + (50 - sx) * 0.52;
               const ry = sy + (47 - sy) * 0.6;
               return (
-                <div key={`review-${seat}`} className="review-row" style={{ left: `${rx}%`, top: `${ry}%` }}>
+                <div key={`review-${seat}`} className="review-row review-static" style={{ left: `${rx}%`, top: `${ry}%` }}>
                   <span className="review-name">{names[seat]}</span>
                   <div className="review-cards">
                     {cards.map((c) => <CardView key={c.id} card={c} size="small" />)}
@@ -410,7 +410,7 @@ export function EuchreTable({ state, names, dispatch, noTrumpRule }: Props) {
               );
             })}
             {!narrow && (
-              <div className="review-row review-kitty">
+              <div className="review-row review-kitty review-static">
                 <span className="review-name">In the kitty</span>
                 <div className="review-cards">
                   {state.kitty.map((c) => <CardView key={c.id} card={c} size="small" />)}
@@ -555,8 +555,9 @@ export function EuchreTable({ state, names, dispatch, noTrumpRule }: Props) {
         )}
       </div>
 
-      {/* Human hand */}
-      <div className="hand-row">
+      {/* Human hand. hand-row-euchre pins the card area's width so the
+          avatar never drifts as the hand empties. */}
+      <div className="hand-row hand-row-euchre">
         <div className="hand-side">
           <div className={[
             'avatar avatar-you',

@@ -24,7 +24,7 @@ function HandEndModal({ state, names, onContinue }: Pick<Props, 'state' | 'names
       ? `${makerName} took all 5 tricks${r.alone ? ' alone' : ''}`
       : (r.maker === 0 ? 'You made it' : `${makerName} made it`);
   return (
-    <div className="modal-backdrop">
+    <div className="modal-backdrop backdrop-clear">
       <div className="modal">
         <h2 className={r.deltas[myTeam] > 0 ? 'result-made' : 'result-set'}>{title}</h2>
         <div className="modal-bidline">
