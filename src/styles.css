@@ -1660,7 +1660,22 @@ body {
 /* Your own deal: panel rides up so the kitty fits below it */
 .action-panel.panel-raised { bottom: 150px; }
 @media (max-width: 740px) {
-  .action-panel.panel-raised { bottom: 132px; }
+  .action-panel.panel-raised { bottom: 58px; }
+  .panel-euchre .bid-controls { flex-wrap: nowrap; gap: 8px; }
+  .panel-euchre .bid-main,
+  .panel-euchre .bid-pass {
+    white-space: nowrap;
+    padding: 10px 13px;
+    font-size: 0.88rem;
+  }
+  .panel-euchre .switch { white-space: nowrap; }
+
+  /* Euchre scoreboard: one slim line, both teams side by side */
+  .board-euchre .board-row { display: inline-flex; align-items: center; gap: 4px; }
+  .board-euchre .board-name { flex: none; }
+  .board-euchre .board-score { margin-left: 3px; font-size: 0.85rem; }
+  .board-euchre .tally { margin: 0 1px; gap: 2px; }
+  .board-euchre .tally i { width: 5px; height: 5px; }
 }
 
 /* Round-2 pass, quieter than the suit buttons */
@@ -1746,8 +1761,8 @@ body {
 .fives-you { left: 35%; top: 11%; }
 .fives-them { left: 11%; top: 31%; }
 @media (max-width: 740px) {
-  .fives-you { left: 33%; top: 10%; }
-  .fives-them { left: 9%; top: 29%; }
+  .fives-you { left: 76%; top: 9%; }
+  .fives-them { left: 8%; top: 26%; }
   .fives { transform: scale(0.78); }
 }
 

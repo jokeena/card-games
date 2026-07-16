@@ -16,14 +16,14 @@ const MOBILE_TRICK_OFFSET: [number, number][] = [[0, 62], [-68, 0], [0, -46], [6
  * panel raises itself to make room).
  */
 const KITTY_POS: [number, number][] = [[50, 88], [25, 51], [50, 40], [75, 51]];
-const MOBILE_KITTY_POS: [number, number][] = [[50, 84], [27, 43], [50, 40], [73, 43]];
+const MOBILE_KITTY_POS: [number, number][] = [[50, 54], [36, 40], [50, 40], [64, 40]];
 
 /**
  * Once the hand is underway the kitty retires to the table edge beside
  * the dealer, out of the way of the trick.
  */
 const KITTY_PLAY_POS: [number, number][] = [[38, 90], [12, 68], [63, 17], [88, 68]];
-const MOBILE_KITTY_PLAY_POS: [number, number][] = [[36, 84], [14, 60], [64, 19], [86, 60]];
+const MOBILE_KITTY_PLAY_POS: [number, number][] = [[18, 78], [14, 58], [64, 19], [86, 58]];
 
 /** Your team plays the red 5s, theirs the black — matching the avatar rings. */
 export const TEAM_COLORS = ['#e06868', '#4a5568'];
@@ -333,10 +333,11 @@ export function EuchreTable({ state, names, dispatch, noTrumpRule }: Props) {
           <div className="draw-layer">
             {state.drawCards.slice(0, drawN).map((d, i) => {
               // Cards land between the seat and the table center, fanning
-              // slightly with each lap so nothing hides the avatars.
+              // slightly with each lap so nothing hides the avatars. The
+              // narrow felt needs a stronger pull toward the middle.
               const [sx, sy] = positions[d.seat];
-              const cx = sx + (50 - sx) * 0.34;
-              const cy = sy + (52 - sy) * 0.36;
+              const cx = sx + (50 - sx) * (narrow ? 0.55 : 0.34);
+              const cy = sy + (52 - sy) * (narrow ? 0.55 : 0.36);
               const round = Math.floor(i / PLAYERS);
               const isJack = i === state.drawCards.length - 1 && drawN === state.drawCards.length;
               const dx = ((round % 3) - 1) * 26;
@@ -504,7 +505,7 @@ export function EuchreTable({ state, names, dispatch, noTrumpRule }: Props) {
         {/* Order round 1: order it up / pass. On your own deal the panel
             rides higher so the kitty fits between it and your hand. */}
         {showOrderPanel && state.phase === 'order1' && state.turnCard && (
-          <div className={`action-panel ${state.dealer === 0 ? 'panel-raised' : ''}`}>
+          <div className={`action-panel panel-euchre ${state.dealer === 0 ? 'panel-raised' : ''}`}>
             <div className="panel-label">
               Order up the{' '}
               <span className={isRed(state.turnCard.suit) ? 'suit-red' : ''}>
@@ -527,7 +528,7 @@ export function EuchreTable({ state, names, dispatch, noTrumpRule }: Props) {
 
         {/* Order round 2: name a suit / pass (dealer is stuck) */}
         {showOrderPanel && state.phase === 'order2' && (
-          <div className={`action-panel ${state.dealer === 0 ? 'panel-raised' : ''}`}>
+          <div className={`action-panel panel-euchre ${state.dealer === 0 ? 'panel-raised' : ''}`}>
             <div className="panel-label">Name trump</div>
             <div className="suit-buttons">
               {SUITS.filter((s) => s !== state.turnedDown).map((s) => (
